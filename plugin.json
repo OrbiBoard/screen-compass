@@ -9,7 +9,7 @@
     { "id": "openCompassSettings", "text": "罗盘设置", "icon": "ri-settings-3-line", "target": "openCompassSettings" }
   ]
   ,"configSchema": {
-    "theme": { "type": "select", "label": "主题样式", "desc": "经典/扇形", "options": ["classic","sector"], "default": "classic" },
+    "theme": { "type": "select", "label": "主题样式", "desc": "经典/扇形/横向左/横向右", "options": ["classic","sector","hleft","hright"], "default": "classic" },
     "buttons": { "type": "json", "label": "按钮列表", "desc": "[{ id,label,icon,actionType,actionPayload }]", "default": [] },
     "sizeCollapsed": { "type": "number", "label": "收起尺寸", "desc": "窗口最小尺寸", "default": 60 },
     "sizeExpanded": { "type": "number", "label": "展开尺寸", "desc": "窗口最大尺寸", "default": 240 },

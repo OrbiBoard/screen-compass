@@ -6,12 +6,16 @@
     <title>屏幕罗盘设置</title>
     <link rel="stylesheet" href="../../../renderer/remixicon-local.css" />
     <style>
-      :root { --fg: #e6f0ff; --muted: #88a; }
+       :root { --fg: #e6f0ff; --muted: #88a; }
       html, body { height: 100%; }
       body { margin: 0; background: transparent; color: var(--fg); font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Microsoft YaHei', sans-serif; }
-      .wrap { padding: 16px; }
+      .wrap { padding: 12px; max-height: 92vh; height: auto; box-sizing: border-box; overflow: hidden; }
+      .split { display:flex; gap:12px; height: auto; min-height: 0; }
+      .left-pane { flex: 0 0 340px; display:flex; align-items:center; justify-content:center; height: auto; background: rgba(16,24,36,0.32); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; box-shadow: inset 0 8px 24px rgba(0,0,0,0.35), 0 6px 18px rgba(0,0,0,0.35); padding: 10px; }
+      .right-pane { flex: 1 1 auto; max-height: 92vh; overflow-y: auto; background: rgba(16,24,36,0.18); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.35); padding: 10px; }
       .title { font-size: 18px; font-weight: 600; margin-bottom: 10px; }
       .row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+      .row.active { background: rgba(138,180,248,0.12); outline: 2px solid rgba(138,180,248,0.35); border-radius: 8px; }
       input, select { height:30px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color:#e6f0ff; padding:0 8px; }
       select, .sel { appearance: none; -webkit-appearance: none; -moz-appearance: none; background: rgba(255,255,255,0.06) !important; color:#e6f0ff !important; border:1px solid rgba(255,255,255,0.2) !important; }
       option { background: #182030; color: #e6f0ff; }
@@ -26,8 +30,9 @@
       .seg { display:flex; gap:6px; }
       .seg .btn { height:30px; padding:0 12px; }
       .seg .btn.active { border-color: rgba(64,128,255,0.42); background: rgba(64,128,255,0.22); }
+      .badge { display:inline-flex; align-items:center; gap:6px; padding: 2px 10px; border-radius: 999px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); font-size: 12px; }
       .pane-row { display:flex; gap:12px; align-items:flex-start; margin-top:12px; }
-      .preview { border:1px solid rgba(255,255,255,0.2); border-radius:10px; background: rgba(16,24,36,0.4); width: 240px; height: 240px; display:flex; align-items:center; justify-content:center; position: relative; overflow:hidden; }
+      .preview { border:1px solid rgba(255,255,255,0.2); border-radius:10px; background: linear-gradient(180deg, rgba(40,80,120,0.25), rgba(20,30,50,0.25)); width: 200px; height: 200px; display:flex; align-items:center; justify-content:center; position: relative; overflow:hidden; box-shadow: 0 10px 24px rgba(0,0,0,0.35); }
       .preview .root { width:100%; height:100%; position:relative; display:flex; align-items:center; justify-content:center; }
       .preview .circle-bg { position:absolute; inset:0; border-radius:50%; background: rgba(20,28,40,0.28); border: 1px solid rgba(255,255,255,0.18); }
       .preview .ring { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; }
@@ -46,62 +51,68 @@
       .preview.classic .circle-bg { opacity: 0; }
       .preview.sector .item { background: transparent; border: none; }
       .preview.classic .item.active .dot { border-color: rgba(64,128,255,0.42); box-shadow: 0 0 0 2px rgba(64,128,255,0.22) inset; }
-      .editor { border:1px solid rgba(255,255,255,0.2); border-radius:10px; background: rgba(16,24,36,0.35); padding:10px; display:flex; flex-direction:column; gap:8px; margin-top: 12px; }
-      #appearanceEditor { margin-top: 0; width: 320px; flex: 0 0 320px; position: sticky; top: 12px; }
+      .editor { border:1px solid rgba(255,255,255,0.2); border-radius:10px; background: rgba(16,24,36,0.35); padding:10px; display:flex; flex-direction:column; gap:8px; margin-top: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.25); }
+      #appearanceEditor { margin-top: 0; width: auto; flex: 1 1 auto; position: static; top: auto; }
       .editor .row { margin: 0; }
       #appearanceEditor .row label { flex: 0 0 120px; }
       #appearanceEditor .row input { flex: 1 1 auto; min-width: 0; }
       #appearanceEditor .row .btn { flex: 0 0 auto; min-width: 120px; height: 30px; padding: 0 12px; white-space: nowrap; }
+      .pane { margin-bottom: 16px; }
+      .center.area { position: fixed; left: 0; right: 0; bottom: 8px; display: flex; justify-content: center; pointer-events: none; }
+      .center.area .wrap { pointer-events: auto; background: rgba(16,24,36,0.55); border: 1px solid rgba(255,255,255,0.16); border-radius: 12px; padding: 6px 8px; }
+      .center.area .items { display: flex; gap: 8px; }
+      .center.area .items .btn { height: 28px; padding: 0 10px; }
+      .center.area .items .btn.active { border-color: rgba(64,128,255,0.42); background: rgba(64,128,255,0.22); }
+      .num { display:flex; align-items:center; gap:6px; flex: 1 1 auto; }
+      .btn.step { height: 30px; width: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+      .actions { background: rgba(16,24,36,0.25); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 8px; }
+
     </style>
   </head>
   <body>
     <div class="wrap">
-      <div class="title">罗盘按钮设置</div>
-      <div class="row">
-        <label style="min-width:80px;color:#e6f0ff;">主题</label>
-        <div class="seg" id="themeSeg">
-          <button class="btn" id="themeClassicBtn"><span>经典</span></button>
-          <button class="btn" id="themeSectorBtn"><span>扇形</span></button>
-        </div>
-      </div>
-      <div class="pane-row" id="pvRow">
-        <div class="preview" id="preview">
-          <div class="root" id="pvRoot">
-            <div class="circle-bg" id="pvCircle"></div>
-            <div class="sectors" id="pvSectors"></div>
-            <div class="ring" id="pvRing"></div>
-            <div class="center-btn" id="pvCenter"><i class="ri-compass-3-line"></i></div>
+      <div class="split">
+        <div class="left-pane" id="leftPane">
+          <div class="preview" id="preview">
+            <div class="root" id="pvRoot">
+              <div class="circle-bg" id="pvCircle"></div>
+              <div class="sectors" id="pvSectors"></div>
+              <div class="ring" id="pvRing"></div>
+              <div id="pvHTray" style="position:absolute;display:none;height:58px;align-items:center;gap:8px;padding:6px 8px;"></div>
+              <div class="center-btn" id="pvCenter"><i class="ri-compass-3-line"></i></div>
+            </div>
           </div>
         </div>
-        <div class="editor" id="appearanceEditor">
-          <div class="row">
-            <label style="min-width:120px;color:#e6f0ff;">收起窗口尺寸</label>
-            <input id="sizeCollapsedInput" type="number" min="40" max="240" step="1" placeholder="60" />
+        <div class="right-pane">
+          <div id="paneTheme" class="pane" style="display:none;">
+            <div class="title"><i class="ri-pantone-line"></i> 外观与主题</div>
+            <div class="editor" id="appearanceEditor">
+              <div class="row"><label style="min-width:120px;color:#e6f0ff;">收起窗口尺寸</label><div class="num"><button class="btn step" id="sizeCollapsedDec"><i class="ri-subtract-line"></i></button><input id="sizeCollapsedInput" type="number" min="40" max="240" step="1" placeholder="60" /><button class="btn step" id="sizeCollapsedInc"><i class="ri-add-line"></i></button></div></div>
+              <div class="row"><label style="min-width:120px;color:#e6f0ff;">展开窗口尺寸</label><div class="num"><button class="btn step" id="sizeExpandedDec"><i class="ri-subtract-line"></i></button><input id="sizeExpandedInput" type="number" min="120" max="480" step="1" placeholder="240" /><button class="btn step" id="sizeExpandedInc"><i class="ri-add-line"></i></button></div></div>
+              <div class="row"><label style="min-width:120px;color:#e6f0ff;">中心按钮大小</label><div class="num"><button class="btn step" id="centerSizeDec"><i class="ri-subtract-line"></i></button><input id="centerSizeInput" type="number" min="32" max="160" step="1" placeholder="50" /><button class="btn step" id="centerSizeInc"><i class="ri-add-line"></i></button></div></div>
+              <div class="row"><label style="min-width:120px;color:#e6f0ff;">罗盘图标</label><input id="centerIconInput" placeholder="ri-compass-3-line" /><button class="btn" id="pickCenterIcon"><i class="ri-pantone-line"></i><span>选择图标</span></button></div>
+            <div class="row"><label style="min-width:80px;color:#e6f0ff;">主题</label><div class="seg" id="themeSeg"><button class="btn" id="themeClassicBtn"><span>经典</span></button><button class="btn" id="themeSectorBtn"><span>扇形</span></button><button class="btn" id="themeHLeftBtn"><span>横向(左)</span></button><button class="btn" id="themeHRightBtn"><span>横向(右)</span></button></div></div>
+            </div>
           </div>
-          <div class="row">
-            <label style="min-width:120px;color:#e6f0ff;">展开窗口尺寸</label>
-            <input id="sizeExpandedInput" type="number" min="120" max="480" step="1" placeholder="240" />
+          <div id="paneProject" class="pane" style="display:none;">
+            <div class="title"><i class="ri-list-check"></i> 项目与动作</div>
+            <div id="pvTopTrayWrap" style="display:none; position:relative; margin:12px 0 14px 0; padding: 2px 0;">
+              <div id="pvTopTrayBg" style="position:absolute; left:12px; right:12px; top:0; height:72px; border-radius:54px; border:1px solid rgba(255,255,255,0.28); background: rgba(20,28,40,0.52);"></div>
+              <div id="pvTopTray" style="position:relative; display:none; height:60px; align-items:center; gap:10px; padding:6px 12px;"></div>
+            </div>
+            <div id="projectList"></div>
           </div>
-          <div class="row">
-            <label style="min-width:120px;color:#e6f0ff;">中心按钮大小</label>
-            <input id="centerSizeInput" type="number" min="32" max="160" step="1" placeholder="50" />
-          </div>
-          <div class="row">
-            <label style="min-width:120px;color:#e6f0ff;">罗盘图标</label>
-            <input id="centerIconInput" placeholder="ri-compass-3-line" />
-            <button class="btn" id="pickCenterIcon"><i class="ri-pantone-line"></i><span>选择图标</span></button>
+          <div class="actions">
+            <button class="btn" id="add"><i class="ri-add-line"></i><span>新增按钮</span></button>
+            <button class="btn primary" id="save"><i class="ri-check-line"></i><span>保存</span></button>
           </div>
         </div>
-      </div>
-      <div id="list"></div>
-      <div class="actions">
-        <button class="btn" id="openCompass"><i class="ri-compass-3-line"></i><span>打开罗盘</span></button>
-        <button class="btn" id="add"><i class="ri-add-line"></i><span>新增按钮</span></button>
-        <button class="btn primary" id="save"><i class="ri-check-line"></i><span>保存</span></button>
       </div>
     </div>
     <script>
-      const scope = 'screen-compass';
+      const scope = 'screen.compass';
+      const altScope = 'screen-compass';
+      let channelTopic = '';
       let items = [];
       let pluginIcons = [];
       const remixShort = ['ri-compass-3-line','ri-close-line','ri-shuffle-line','ri-settings-3-line','ri-terminal-line','ri-apps-2-line','ri-focus-3-line','ri-play-line','ri-stop-line','ri-puzzle-line','ri-presentation-line','ri-slideshow-line','ri-pencil-line','ri-brush-line','ri-quill-pen-line','ri-eraser-line'];
@@ -117,15 +128,16 @@
       }
       async function load(){
         try {
-          const raw = await window.lowbarAPI.configGet(scope, 'buttons');
+          let raw = await window.lowbarAPI.configGet(scope, 'buttons');
           const list = (raw && raw.result) ? raw.result : raw;
           items = Array.isArray(list) ? list : [];
+          if (!items.length) { try { raw = await window.lowbarAPI.configGet(altScope, 'buttons'); const list2 = (raw && raw.result) ? raw.result : raw; items = Array.isArray(list2) ? list2 : items; } catch {} }
           items.forEach(it => { if (it && typeof it==='object') { if (it.actionType==='program') it.actionType='openApp'; if (it.actionType==='command') it.actionType='cmd'; } });
         } catch { items = []; }
-        try { const v = await window.lowbarAPI.configGet(scope, 'sizeCollapsed'); window.__sizeCollapsed = Number((v && v.result) ? v.result : v) || 60; } catch { window.__sizeCollapsed = 60; }
-        try { const v = await window.lowbarAPI.configGet(scope, 'sizeExpanded'); window.__sizeExpanded = Number((v && v.result) ? v.result : v) || 240; } catch { window.__sizeExpanded = 240; }
-        try { const v = await window.lowbarAPI.configGet(scope, 'centerSize'); window.__centerSize = Number((v && v.result) ? v.result : v) || 50; } catch { window.__centerSize = 50; }
-        try { const v = await window.lowbarAPI.configGet(scope, 'centerIcon'); window.__centerIcon = String((v && v.result) ? v.result : v || 'ri-compass-3-line'); } catch { window.__centerIcon = 'ri-compass-3-line'; }
+        try { let v = await window.lowbarAPI.configGet(scope, 'sizeCollapsed'); window.__sizeCollapsed = Number((v && v.result) ? v.result : v) || 60; if (!v) { try { v = await window.lowbarAPI.configGet(altScope, 'sizeCollapsed'); window.__sizeCollapsed = Number((v && v.result) ? v.result : v) || window.__sizeCollapsed; } catch {} } } catch { window.__sizeCollapsed = 60; }
+        try { let v = await window.lowbarAPI.configGet(scope, 'sizeExpanded'); window.__sizeExpanded = Number((v && v.result) ? v.result : v) || 240; if (!v) { try { v = await window.lowbarAPI.configGet(altScope, 'sizeExpanded'); window.__sizeExpanded = Number((v && v.result) ? v.result : v) || window.__sizeExpanded; } catch {} } } catch { window.__sizeExpanded = 240; }
+        try { let v = await window.lowbarAPI.configGet(scope, 'centerSize'); window.__centerSize = Number((v && v.result) ? v.result : v) || 50; if (!v) { try { v = await window.lowbarAPI.configGet(altScope, 'centerSize'); window.__centerSize = Number((v && v.result) ? v.result : v) || window.__centerSize; } catch {} } } catch { window.__centerSize = 50; }
+        try { let v = await window.lowbarAPI.configGet(scope, 'centerIcon'); window.__centerIcon = String((v && v.result) ? v.result : v || 'ri-compass-3-line'); if (!v) { try { v = await window.lowbarAPI.configGet(altScope, 'centerIcon'); const vv = (v && v.result) ? v.result : v; window.__centerIcon = String(vv || window.__centerIcon || 'ri-compass-3-line'); } catch {} } } catch { window.__centerIcon = 'ri-compass-3-line'; }
         try {
           window.__centerSize = Math.max(32, Math.min(160, Number(window.__centerSize || 50)));
           window.__sizeCollapsed = Math.max(40, Math.min(240, Number(window.__sizeCollapsed || (window.__centerSize + 10))));
@@ -133,41 +145,63 @@
           window.__sizeCollapsed = Math.max(40, Math.min(240, Number(window.__centerSize + 10)));
         } catch {}
       }
-      function render(){
-        const root = document.getElementById('list');
+      function render(){ renderProjectList(); }
+      function renderProjectList(){
+        const root = document.getElementById('projectList');
         root.innerHTML = '';
-        if (!Array.isArray(items) || items.length === 0) return;
-        if (typeof window.__selectedIndex !== 'number' || window.__selectedIndex < 0 || window.__selectedIndex >= items.length) window.__selectedIndex = 0;
-        const it = items[window.__selectedIndex];
-        const editor = document.createElement('div'); editor.className = 'editor';
-        const row = document.createElement('div'); row.className = 'row';
-        const label = document.createElement('input'); label.placeholder='名称'; label.value = it.label || '';
-        const icon = document.createElement('input'); icon.placeholder='图标类名'; icon.value = it.icon || '';
-        const pick = document.createElement('button'); pick.className='btn'; pick.innerHTML = '<i class="ri-pantone-line"></i><span>选择图标</span>';
-        const type = document.createElement('select'); type.className = 'sel';
-        ['plugin','pluginEvent','openApp','cmd','power','wait'].forEach(t=>{ const opt=document.createElement('option'); opt.value=t; opt.textContent=t; type.appendChild(opt); });
-        type.value = (it.actionType==='program')? 'openApp' : (it.actionType==='command'? 'cmd' : (it.actionType || 'plugin'));
-        const payloadBox = document.createElement('div'); payloadBox.style.flex = '1';
-        const del = document.createElement('button'); del.className='del'; del.textContent='删除'; del.onclick=()=>{ items.splice(window.__selectedIndex,1); if (window.__selectedIndex >= items.length) window.__selectedIndex = items.length - 1; render(); placePreview(); };
-        row.appendChild(label); row.appendChild(icon); row.appendChild(pick); row.appendChild(type); row.appendChild(payloadBox); row.appendChild(del);
-        editor.appendChild(row);
-        root.appendChild(editor);
-        function syncBase(){ it.label = label.value; it.icon = icon.value; it.actionType = type.value; placePreview(); }
-        label.onchange=syncBase; icon.onchange=syncBase; type.onchange=()=>{ syncBase(); renderActionFields(it, payloadBox); };
-        pick.onclick = () => openIconPicker(icon);
-        renderActionFields(it, payloadBox);
+        const listWrap = document.createElement('div'); listWrap.className='editor';
+        if (!Array.isArray(items) || items.length === 0) { root.appendChild(listWrap); return; }
+        const ul = document.createElement('div'); ul.style.display='flex'; ul.style.flexDirection='column'; ul.style.gap='8px';
+        const typeLabel = (t)=>{
+          const m = { plugin:'插件函数', pluginEvent:'插件事件', openApp:'打开程序', cmd:'命令', power:'电源' };
+          const k = (t==='program')?'openApp':(t==='command')?'cmd':t; return m[k]||String(k||'');
+        };
+        items.forEach((it, i)=>{
+          const row = document.createElement('div'); row.className='row';
+          const left = document.createElement('div'); left.style.display='flex'; left.style.alignItems='center'; left.style.gap='8px'; left.style.flex='1';
+          let iconEl;
+          try {
+            const ic = String(it.icon||'');
+            if (ic.startsWith('ri-')) { iconEl = document.createElement('i'); iconEl.className = ic; }
+            else { iconEl = document.createElement('img'); iconEl.src = ic; iconEl.style.width='18px'; iconEl.style.height='18px'; iconEl.style.objectFit='contain'; iconEl.style.borderRadius='4px'; }
+          } catch { iconEl = document.createElement('i'); iconEl.className='ri-circle-line'; }
+          const labelEl = document.createElement('span'); labelEl.textContent = String(it.label||''); labelEl.style.color='#e6f0ff';
+          const typeBadge = document.createElement('span'); typeBadge.className='badge'; typeBadge.innerHTML = `<i class="ri-tools-line"></i> ${typeLabel(it.actionType)}`;
+          left.appendChild(iconEl); left.appendChild(labelEl);
+          left.appendChild(typeBadge);
+          const btnUp = document.createElement('button'); btnUp.className='btn'; btnUp.innerHTML='<i class="ri-arrow-up-line"></i><span>上移</span>';
+          const btnDown = document.createElement('button'); btnDown.className='btn'; btnDown.innerHTML='<i class="ri-arrow-down-line"></i><span>下移</span>';
+          const btnEdit = document.createElement('button'); btnEdit.className='btn'; btnEdit.innerHTML='<i class="ri-edit-line"></i><span>编辑</span>';
+          const btnDel = document.createElement('button'); btnDel.className='del'; btnDel.textContent='删除';
+          btnUp.onclick = () => { if (i>0){ const tmp = items[i-1]; items[i-1]=items[i]; items[i]=tmp; window.__selectedIndex = i-1; renderProjectList(); placePreview(); } };
+          btnDown.onclick = () => { if (i<items.length-1){ const tmp = items[i+1]; items[i+1]=items[i]; items[i]=tmp; window.__selectedIndex = i+1; renderProjectList(); placePreview(); } };
+          btnEdit.onclick = async () => { try { await window.lowbarAPI.pluginCall('screen.compass','openItemEditor',[i]); } catch {} try { await window.lowbarAPI.pluginCall('screen.compass','broadcastButtons',[{ buttons: items, theme, sizeCollapsed: window.__sizeCollapsed, sizeExpanded: window.__sizeExpanded, centerSize: window.__centerSize, centerIcon: window.__centerIcon }]); } catch {} };
+          btnDel.onclick = () => { items.splice(i,1); if (typeof window.__selectedIndex!=='number' || window.__selectedIndex>=items.length) window.__selectedIndex = items.length-1; renderProjectList(); placePreview(); };
+          row.appendChild(left); row.appendChild(btnUp); row.appendChild(btnDown); row.appendChild(btnEdit); row.appendChild(btnDel);
+          row.onclick = () => { window.__selectedIndex = i; placePreview(); renderProjectList(); };
+          if (typeof window.__selectedIndex==='number' && window.__selectedIndex===i) row.classList.add('active');
+          ul.appendChild(row);
+        });
+        listWrap.appendChild(ul); root.appendChild(listWrap);
       }
-      document.getElementById('openCompass').onclick = async () => { try { await window.lowbarAPI.pluginCall('screen.compass','openCompass',[]); } catch {} };
-      document.getElementById('add').onclick = () => { items.push({ id: 'btn_'+Date.now(), label:'新按钮', icon:'ri-focus-3-line', actionType:'cmd', actionPayload:{ cmd: '' } }); window.__selectedIndex = items.length - 1; render(); placePreview(); };
+      document.getElementById('add').onclick = async () => { items.push({ id: 'btn_'+Date.now(), label:'新按钮', icon:'ri-focus-3-line', actionType:'cmd', actionPayload:{ cmd: '' } }); window.__selectedIndex = items.length - 1; renderProjectList(); placePreview(); try { await window.lowbarAPI.configSet(scope, 'buttons', items); } catch {} try { await window.lowbarAPI.configSet(altScope, 'buttons', items); } catch {} try { if (channelTopic) await window.lowbarAPI.emitEvent(channelTopic, { type: 'buttons.update', buttons: items }); } catch {} try { await window.lowbarAPI.pluginCall('screen.compass','broadcastButtons',[{ buttons: items }]); } catch {} };
       let theme = 'classic';
       function updateThemeSeg(){ try {
         const c = document.getElementById('themeClassicBtn');
         const s = document.getElementById('themeSectorBtn');
+        const hl = document.getElementById('themeHLeftBtn');
+        const hr = document.getElementById('themeHRightBtn');
         c.classList.toggle('active', theme==='classic');
         s.classList.toggle('active', theme==='sector');
+        hl.classList.toggle('active', theme==='hleft');
+        hr.classList.toggle('active', theme==='hright');
+        const lp = document.getElementById('leftPane');
+        if (lp) lp.style.display = (theme==='hleft' || theme==='hright') ? 'none' : 'flex';
       } catch {} }
       document.getElementById('themeClassicBtn').onclick = () => { theme = 'classic'; updateThemeSeg(); placePreview(); };
       document.getElementById('themeSectorBtn').onclick = () => { theme = 'sector'; updateThemeSeg(); placePreview(); };
+      document.getElementById('themeHLeftBtn').onclick = () => { theme = 'hleft'; updateThemeSeg(); placePreview(); };
+      document.getElementById('themeHRightBtn').onclick = () => { theme = 'hright'; updateThemeSeg(); placePreview(); };
       document.getElementById('save').onclick = async () => {
         try {
           await window.lowbarAPI.configSet(scope, 'theme', theme);
@@ -178,13 +212,23 @@
           window.__centerSize = centerSaved;
           window.__sizeCollapsed = Math.max(40, Math.min(240, centerSaved + 10));
           await window.lowbarAPI.configSet(scope, 'centerSize', window.__centerSize);
-          await window.lowbarAPI.configSet(scope, 'centerIcon', String(document.getElementById('centerIconInput').value || window.__centerIcon || 'ri-compass-3-line'));
-          await window.lowbarAPI.emitEvent(scope, { type: 'buttons.update', buttons: items, theme, sizeCollapsed: window.__sizeCollapsed, sizeExpanded: window.__sizeExpanded, centerSize: window.__centerSize, centerIcon: window.__centerIcon });
+          window.__centerIcon = String(document.getElementById('centerIconInput').value || window.__centerIcon || 'ri-compass-3-line');
+          await window.lowbarAPI.configSet(scope, 'centerIcon', window.__centerIcon);
+          try {
+            await window.lowbarAPI.configSet(altScope, 'theme', theme);
+            await window.lowbarAPI.configSet(altScope, 'buttons', items);
+            await window.lowbarAPI.configSet(altScope, 'sizeCollapsed', window.__sizeCollapsed);
+            await window.lowbarAPI.configSet(altScope, 'sizeExpanded', window.__sizeExpanded);
+            await window.lowbarAPI.configSet(altScope, 'centerSize', window.__centerSize);
+            await window.lowbarAPI.configSet(altScope, 'centerIcon', window.__centerIcon);
+          } catch {}
+          try { if (channelTopic) await window.lowbarAPI.emitEvent(channelTopic, { type: 'buttons.update', buttons: items, theme, sizeCollapsed: window.__sizeCollapsed, sizeExpanded: window.__sizeExpanded, centerSize: window.__centerSize, centerIcon: window.__centerIcon }); } catch {}
+          try { await window.lowbarAPI.pluginCall('screen.compass','broadcastButtons',[{ buttons: items, theme, sizeCollapsed: window.__sizeCollapsed, sizeExpanded: window.__sizeExpanded, centerSize: window.__centerSize, centerIcon: window.__centerIcon }]); } catch {}
         } catch {}
       };
       function placePreview(){
-        try { const rootEl = document.getElementById('pvRoot'); const ring = document.getElementById('pvRing'); ring.innerHTML=''; const sectors = document.getElementById('pvSectors'); sectors.innerHTML=''; } catch {}
-        const rootEl = document.getElementById('pvRoot'); const ring = document.getElementById('pvRing'); const sectors = document.getElementById('pvSectors');
+        try { const rootEl = document.getElementById('pvRoot'); const ring = document.getElementById('pvRing'); ring.innerHTML=''; const sectors = document.getElementById('pvSectors'); sectors.innerHTML=''; const hTray = document.getElementById('pvHTray'); hTray.innerHTML=''; } catch {}
+        const rootEl = document.getElementById('pvRoot'); const ring = document.getElementById('pvRing'); const sectors = document.getElementById('pvSectors'); const hTray = document.getElementById('pvHTray');
         const W = Math.max(200, Math.floor(rootEl.getBoundingClientRect().width || 240));
         const H = Math.max(200, Math.floor(rootEl.getBoundingClientRect().height || 240));
         const cx = Math.floor(W/2), cy = Math.floor(H/2);
@@ -223,15 +267,40 @@
           }
           sectors.appendChild(svg);
         }
+        if (theme==='hleft' || theme==='hright'){
+          try { hTray.style.display='none'; } catch {}
+          try { document.getElementById('pvTopTrayWrap').style.display = 'block'; } catch {}
+          const topTray = document.getElementById('pvTopTray');
+          const topBg = document.getElementById('pvTopTrayBg');
+          try { topTray.style.display = 'flex'; } catch {}
+          const itemWidth = 56; const gap = 8; const pad = 16;
+          const totalW = (N>0)? (N*itemWidth + Math.max(0,N-1)*gap + pad) : pad;
+          try { topBg.style.display = 'block'; } catch {}
+          try { topBg.style.width = 'auto'; } catch {}
+          topTray.innerHTML = '';
+          for(let i=0;i<N;i++){
+            const it=items[i]; const div=document.createElement('div'); div.className='item'; const labelText=String(it.label||'').trim(); const icStr=String(it.icon||''); const useIcon = icStr.startsWith('ri-') ? `<i class="${icStr}"></i>` : `<img src="${icStr}" style="width:20px;height:20px;object-fit:contain;border-radius:4px;" />`; div.innerHTML = `${useIcon}<div class="label">${labelText}</div>`; topTray.appendChild(div)
+          }
+        } else {
+          try { document.getElementById('pvTopTrayWrap').style.display = 'none'; } catch {}
         for (let i=0;i<N;i++){
           const it = items[i];
-          const a = (Math.PI * 2) * ((i + 0.5) / Math.max(N, 1));
           const centerR = 25;
-          const ro2 = Math.min(R + 14, Math.min(cx, cy) - 10);
-          const ri2 = Math.max(centerR + 4, Math.round(R * 0.5));
-          const RB = Math.round((ro2 + ri2) / 2);
-          let x = Math.round(cx + RB * Math.cos(a));
-          let y = Math.round(cy + RB * Math.sin(a));
+          let x = 0; let y = 0;
+          if (theme==='hleft' || theme==='hright') {
+            const spacing = 56;
+            const startX = (theme==='hleft') ? (cx - centerR - 24) : (cx + centerR + 24);
+            const dir = (theme==='hleft') ? -1 : 1;
+            x = Math.round(startX + dir * i * spacing);
+            y = cy;
+          } else {
+            const a = (Math.PI * 2) * ((i + 0.5) / Math.max(N, 1));
+            const ro2 = Math.min(R + 14, Math.min(cx, cy) - 10);
+            const ri2 = Math.max(centerR + 4, Math.round(R * 0.5));
+            const RB = Math.round((ro2 + ri2) / 2);
+            x = Math.round(cx + RB * Math.cos(a));
+            y = Math.round(cy + RB * Math.sin(a));
+          }
           const div = document.createElement('div');
           div.className = 'item';
           div.style.position = 'absolute';
@@ -242,20 +311,44 @@
           div.style.left = (x - halfW) + 'px';
           div.style.top = (y - halfH) + 'px';
           const labelText = String(it.label || '').trim();
-          if (theme === 'classic') { div.innerHTML = `<div class="dot"><i class="${it.icon || 'ri-circle-line'}"></i><div class="label">${labelText}</div></div>`; }
-          else { div.innerHTML = `<i class="${it.icon || 'ri-circle-line'}"></i><div class="label">${labelText}</div>`; }
+          const icStr = String(it.icon||'');
+          if (theme === 'classic') {
+            const useIcon = icStr.startsWith('ri-')
+              ? `<i class="${icStr}"></i>`
+              : `<img src="${icStr}" style="width:20px;height:20px;object-fit:contain;border-radius:4px;" />`;
+            div.innerHTML = `<div class="dot">${useIcon}<div class="label">${labelText}</div></div>`;
+          } else {
+            const useIcon = icStr.startsWith('ri-')
+              ? `<i class="${icStr}"></i>`
+              : `<img src="${icStr}" style="width:20px;height:20px;object-fit:contain;border-radius:4px;" />`;
+            div.innerHTML = `${useIcon}<div class="label">${labelText}</div>`;
+          }
           div.title = it.label || '';
           if (typeof window.__selectedIndex==='number' && window.__selectedIndex===i && theme==='classic') { div.classList.add('active'); }
           div.onclick = () => { window.__selectedIndex = i; render(); placePreview(); };
           ring.appendChild(div);
         }
+        }
         const center = document.getElementById('pvCenter');
         try {
           center.style.width = (window.__centerSize || 50) + 'px';
           center.style.height = (window.__centerSize || 50) + 'px';
-          const icon = center.querySelector('i');
-          icon.className = String(window.__centerIcon || 'ri-compass-3-line');
-          icon.style.fontSize = Math.round((window.__centerSize || 50) * 0.44) + 'px';
+          const v = String(window.__centerIcon || 'ri-compass-3-line');
+          const iconSize = Math.round((window.__centerSize || 50) * 0.44) + 'px';
+          if (v.startsWith('ri-')) {
+            if (!center.querySelector('i')) center.innerHTML = '<i class="ri-compass-3-line"></i>';
+            const iEl = center.querySelector('i');
+            iEl.className = v;
+            iEl.style.fontSize = iconSize;
+          } else {
+            if (!center.querySelector('img')) center.innerHTML = '<img />';
+            const img = center.querySelector('img');
+            img.src = v;
+            img.style.width = iconSize;
+            img.style.height = iconSize;
+            img.style.objectFit = 'contain';
+            img.style.borderRadius = '4px';
+          }
         } catch {}
         try { center.onclick = () => {}; } catch {}
       }
@@ -343,10 +436,6 @@
           const sync = () => { it.actionPayload = { op: opSel.value }; };
           opSel.onchange = sync;
           box.appendChild(opSel);
-        } else if (type === 'wait'){
-          const sec = document.createElement('input'); sec.placeholder='秒数'; sec.value = (it.actionPayload && (it.actionPayload.seconds || it.actionPayload.sec || it.actionPayload.ms)) || '';
-          const sync = () => { it.actionPayload = { seconds: Number(sec.value) || 0 }; };
-          sec.onchange = sync; box.appendChild(sec);
         }
       }
 
@@ -373,6 +462,15 @@
           const cs = document.getElementById('centerSizeInput'); cs.value = String(window.__centerSize || 50);
           const ci = document.getElementById('centerIconInput'); ci.value = String(window.__centerIcon || 'ri-compass-3-line');
           document.getElementById('pickCenterIcon').onclick = () => openIconPicker(ci);
+          const stepSC = (v)=> Math.max(40, Math.min(240, v));
+          const stepSE = (v)=> Math.max(120, Math.min(480, v));
+          const stepCS = (v)=> Math.max(32, Math.min(160, v));
+          document.getElementById('sizeCollapsedDec').onclick = () => { sc.value = String(stepSC((Number(sc.value)||60) - 5)); sc.dispatchEvent(new Event('change')); };
+          document.getElementById('sizeCollapsedInc').onclick = () => { sc.value = String(stepSC((Number(sc.value)||60) + 5)); sc.dispatchEvent(new Event('change')); };
+          document.getElementById('sizeExpandedDec').onclick = () => { se.value = String(stepSE((Number(se.value)||240) - 10)); se.dispatchEvent(new Event('change')); };
+          document.getElementById('sizeExpandedInc').onclick = () => { se.value = String(stepSE((Number(se.value)||240) + 10)); se.dispatchEvent(new Event('change')); };
+          document.getElementById('centerSizeDec').onclick = () => { cs.value = String(stepCS((Number(cs.value)||50) - 5)); cs.dispatchEvent(new Event('change')); };
+          document.getElementById('centerSizeInc').onclick = () => { cs.value = String(stepCS((Number(cs.value)||50) + 5)); cs.dispatchEvent(new Event('change')); };
           sc.onchange = () => {
             window.__sizeCollapsed = Math.max(40, Math.min(240, Number(sc.value)||60));
             window.__centerSize = Math.max(32, Math.min(160, window.__sizeCollapsed - 10));
@@ -403,9 +501,48 @@
           pluginIcons = plugins.map(p => String(p.icon || '').trim()).filter(Boolean);
         } catch { pluginIcons = []; plugins = []; pluginMap = {}; }
         render(); placePreview();
-        try { const t = await window.lowbarAPI.configGet(scope, 'theme'); const v = (t && t.result) ? t.result : t; theme = (v === 'sector') ? 'sector' : 'classic'; updateThemeSeg(); } catch { theme='classic'; updateThemeSeg(); }
+        try { const t = await window.lowbarAPI.configGet(scope, 'theme'); const v = (t && t.result) ? t.result : t; theme = ['classic','sector','hleft','hright'].includes(v)?v:'classic'; updateThemeSeg(); } catch { theme='classic'; updateThemeSeg(); }
         placePreview();
+        switchPage('project');
+        try {
+          const u = new URL(window.location.href);
+          const channel = String(u.searchParams.get('channel')||''); channelTopic = channel;
+          const caller = String(u.searchParams.get('caller')||'');
+          if (window.lowbarAPI){
+            window.lowbarAPI.subscribe?.(channel);
+            window.lowbarAPI.onEvent?.((n,p)=>{
+              if(n!==channel) return;
+              if(p?.type==='update'){
+                if(p.target==='centerItems'){}
+                if(p.target==='switch.page'){ switchPage(String(p.value||'project')); }
+                if(p.target==='apply.save'){ document.getElementById('save').click(); }
+                if(p.target==='apply.add'){ document.getElementById('add').click(); }
+              }
+              if(p?.type==='buttons.update'){
+                try {
+                  if (Array.isArray(p.buttons)) { items = p.buttons; }
+                  else if (p.patch && typeof p.patch.index==='number' && p.patch.item){ items[p.patch.index] = p.patch.item; }
+                  if (p.theme) theme = ['classic','sector','hleft','hright'].includes(p.theme)?p.theme:theme;
+                  if (typeof p.sizeCollapsed !== 'undefined') window.__sizeCollapsed = Math.max(40, Math.min(240, Number(p.sizeCollapsed)||window.__sizeCollapsed||60));
+                  if (typeof p.sizeExpanded !== 'undefined') window.__sizeExpanded = Math.max(120, Math.min(480, Number(p.sizeExpanded)||window.__sizeExpanded||240));
+                  if (typeof p.centerSize !== 'undefined') window.__centerSize = Math.max(32, Math.min(160, Number(p.centerSize)||window.__centerSize||50));
+                  if (typeof p.centerIcon !== 'undefined') window.__centerIcon = String(p.centerIcon||window.__centerIcon||'ri-compass-3-line');
+                  updateThemeSeg();
+                  renderProjectList();
+                  placePreview();
+                } catch {}
+              }
+            });
+          }
+        } catch {}
       })();
+      function switchPage(id){
+        try {
+          document.getElementById('paneProject').style.display = (id==='project')? 'block' : 'none';
+          document.getElementById('paneTheme').style.display = (id==='theme')? 'block' : 'none';
+          render();
+        } catch {}
+      }
     </script>
   </body>
   </html>

@@ -1,0 +1,34 @@
+html, body { height: 100%; overflow: hidden; }
+body { margin: 0; background: transparent; display:flex; align-items:center; justify-content:center; overflow: hidden; }
+.root { width: 100%; height: 100%; position: relative; display:flex; align-items:center; justify-content:center; overflow: hidden; }
+.root, .center-btn, .item, .sectors, .htray, .hbg, body, html { user-select: none; -webkit-user-select: none; }
+.center-btn { width: 50px; height: 50px; border-radius: 50%; display:flex; align-items:center; justify-content:center; background: rgba(20,28,40,0.62); border: 1px solid rgba(255,255,255,0.30); cursor: pointer; position: relative; z-index: 5; touch-action: none; }
+.center-btn i { font-size: 22px; color: #ffffff; }
+.center-btn:active { transform: scale(0.96); }
+.ring { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; z-index: 2; }
+.item { width: 44px; height: 58px; border-radius: 12px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; background: rgba(20,28,40,0.52); border: 1px solid rgba(255,255,255,0.28); pointer-events:auto; cursor:pointer; transition: opacity .2s ease, transform .2s ease; }
+.item { box-sizing: border-box; }
+.item i { font-size:22px; color:#e6f0ff; }
+.item .label { font-size:11px; line-height:12px; color:#e6f0ff; opacity:0.88; max-width:64px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.item:hover { transform: scale(1.06); }
+.item.active { background: rgba(64,128,255,0.28); border: 1px solid rgba(64,128,255,0.42); }
+.hidden { opacity:0; transform: scale(0.6); pointer-events:none; }
+.sectors { position:absolute; inset:0; pointer-events:none; z-index: 1; }
+.wedge { transition: opacity .2s ease; }
+.circle-bg { position:absolute; inset:0; border-radius:50%; background: rgba(20,28,40,0.28); border: 1px solid rgba(255,255,255,0.18); pointer-events: auto; z-index: 0; }
+.sector .circle-bg { opacity: 1; }
+.classic .circle-bg { opacity: 0; }
+.classic .item { background: transparent; border: none; height: 58px; width: 56px; }
+.classic .item .dot { width: 52px; height: 52px; border-radius: 50%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; background: rgba(20,28,40,0.62); border: 1px solid rgba(255,255,255,0.30); }
+.classic .item i { color:#ffffff; font-size: 19px; }
+.classic .item .label { font-size: 11px; line-height: 12px; max-width: 48px; margin: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sector .item { background: transparent; border: none; }
+.htray { position:absolute; display:none; height:58px; align-items:center; gap:8px; padding:6px 8px; pointer-events:auto; z-index: 3; }
+.htray .item { position:relative; width:56px; }
+.htray .item:hover { transform: none; }
+.htray .item { background: transparent; border: none; }
+.htray .item:hover, .htray .item:active { background: rgba(20,28,40,0.52); border: 1px solid rgba(255,255,255,0.28); }
+.htray .item.active { background: rgba(64,128,255,0.28); border: 1px solid rgba(64,128,255,0.42); }
+.htray .item .label { max-width:56px; }
+.hbg { position:absolute; z-index: 2; pointer-events:none; }
+.hbg { background: transparent; }

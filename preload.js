@@ -12,5 +12,6 @@ contextBridge.exposeInMainWorld('compassAPI', {
   configGetAll: (scope) => ipcRenderer.invoke('config:getAll', scope),
   configGet: (scope, key) => ipcRenderer.invoke('config:get', scope, key),
   configSet: (scope, key, value) => ipcRenderer.invoke('config:set', scope, key, value),
-  configEnsureDefaults: (scope, defaults) => ipcRenderer.invoke('config:ensureDefaults', scope, defaults)
+  configEnsureDefaults: (scope, defaults) => ipcRenderer.invoke('config:ensureDefaults', scope, defaults),
+  openMainSettings: () => ipcRenderer.invoke('system:openSettings')
 });

@@ -1,6 +1,6 @@
 const path = require('path');
 const url = require('url');
-const { BrowserWindow, app, screen } = require('electron');
+const { BrowserWindow, app, screen, nativeImage, shell } = require('electron');
 
 let __dragTracker = { timer: null };
 function startDragTracking() {
@@ -38,13 +38,60 @@ function unlockWindowSize() {
     try { compassWin.setMaximumSize(9999, 9999); } catch {}
   } catch {}
 }
-const { spawn } = require('child_process');
+
+function resolveShortcutTarget(p) {
+  try {
+    const fp = String(p||''); if (!fp || process.platform !== 'win32') return '';
+    if (String(fp).toLowerCase().endsWith('.lnk')) {
+      const cmd = `(New-Object -COM WScript.Shell).CreateShortcut('${fp.replace(/'/g, "''")}').TargetPath`;
+      const out = execFileSync('powershell', ['-NoProfile','-ExecutionPolicy','Bypass','-Command', cmd], { encoding: 'utf8' });
+      const target = String(out||'').trim();
+      return target || '';
+    }
+    return '';
+  } catch { return '';
+  }
+}
+
+let __appsCache = { ts: 0, list: [], building: false };
+async function buildAppsCache() {
+  try {
+    if (process.platform !== 'win32') { __appsCache.list = []; __appsCache.ts = Date.now(); return; }
+    const roots = [
+      path.join(String(process.env['ProgramData']||''), 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
+      path.join(String(process.env['AppData']||''), 'Microsoft', 'Windows', 'Start Menu', 'Programs')
+    ].filter(p => p && fs.existsSync(p));
+    const out = [];
+    const seen = new Set();
+    const isExe = (p) => String(p||'').toLowerCase().endsWith('.exe');
+    const isLnk = (p) => String(p||'').toLowerCase().endsWith('.lnk');
+    const pushApp = (p) => { try { const key = String(p||'').toLowerCase(); if (!key) return; if (seen.has(key)) return; seen.add(key); const nm = path.basename(p, path.extname(p)); out.push({ name: nm, path: p }); } catch {} };
+    const walk = async (dir, depth) => {
+      try {
+        const ents = await fsp.readdir(dir, { withFileTypes: true });
+        for (const d of ents) {
+          const p1 = path.join(dir, d.name);
+          if (d.isFile() && (isExe(p1) || isLnk(p1))) { pushApp(p1); continue; }
+          if (d.isDirectory() && depth < 2) { await walk(p1, depth + 1); }
+        }
+      } catch {}
+    };
+    for (const r of roots) { await walk(r, 0); }
+    __appsCache.list = out.slice(0, 800);
+    __appsCache.ts = Date.now();
+  } catch { __appsCache.list = []; __appsCache.ts = Date.now(); }
+}
+const { spawn, execFileSync } = require('child_process');
+const fs = require('fs');
+const fsp = fs.promises;
 
 let pluginApi = null;
 let compassWin = null;
+let appWin = null;
+function emitUpdate(target, value){ try { pluginApi.emit(state.eventChannel, { type: 'update', target, value }); } catch {} }
 
 const state = {
-  eventChannel: 'screen.compass',
+  eventChannel: 'screen.compass.channel',
   dragging: false,
   draggingDisplayId: null,
   dragOffsetX: 0,
@@ -132,7 +179,7 @@ const functions = {
   openCompassSettings: async () => {
     try {
       const bgFile = path.join(__dirname, 'background', 'settings.html');
-      const backgroundUrl = url.pathToFileURL(bgFile).href;
+      const backgroundUrl = url.pathToFileURL(bgFile).href + `?channel=${encodeURIComponent(state.eventChannel)}&caller=${encodeURIComponent('screen.compass')}`;
       const params = {
         title: '屏幕罗盘设置',
         eventChannel: state.eventChannel,
@@ -142,8 +189,14 @@ const functions = {
         id: 'screen.compass.settings',
         backgroundUrl,
         floatingUrl: null,
-        centerItems: [],
-        leftItems: []
+        centerItems: [
+          { id: 'view-project', text: '项目', icon: 'ri-list-check', active: true },
+          { id: 'view-theme', text: '主题', icon: 'ri-pantone-line', active: false }
+        ],
+        leftItems: [
+          { id: 'save', text: '保存设置', icon: 'ri-save-3-line' },
+          { id: 'add', text: '新增按钮', icon: 'ri-add-line' }
+        ]
       };
       const res = await pluginApi.call('ui.lowbar', 'openTemplate', [params]);
       if (res && res.ok) return true;
@@ -172,12 +225,57 @@ const functions = {
       return true;
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
   },
+  onLowbarEvent: async (payload = {}) => {
+    try {
+      if (payload?.type === 'left.click') {
+        if (payload.id === 'save') emitUpdate('apply.save', true);
+        if (payload.id === 'add') emitUpdate('apply.add', true);
+      } else if (payload?.type === 'click') {
+        if (payload.id === 'view-project') {
+          emitUpdate('centerItems', [
+            { id: 'view-project', text: '项目', icon: 'ri-list-check', active: true },
+            { id: 'view-theme', text: '主题', icon: 'ri-pantone-line', active: false }
+          ]);
+          emitUpdate('switch.page', 'project');
+        }
+        if (payload.id === 'view-theme') {
+          emitUpdate('centerItems', [
+            { id: 'view-project', text: '项目', icon: 'ri-list-check', active: false },
+            { id: 'view-theme', text: '主题', icon: 'ri-pantone-line', active: true }
+          ]);
+          emitUpdate('switch.page', 'theme');
+        }
+      }
+      return true;
+    } catch (e) { return { ok: false, error: e?.message || String(e) }; }
+  },
+  openItemEditor: async (index) => {
+    try {
+      const floatingFile = path.join(__dirname, 'background', 'editor.html');
+      const urlStr = url.pathToFileURL(floatingFile).href + `?channel=${encodeURIComponent(state.eventChannel)}&caller=${encodeURIComponent('screen.compass')}&index=${encodeURIComponent(String(index||0))}`;
+      emitUpdate('floatingUrl', urlStr);
+      return true;
+    } catch (e) { return { ok: false, error: e?.message || String(e) }; }
+  },
+  closeItemEditor: async () => { try { emitUpdate('floatingUrl', null); return true; } catch (e) { return { ok: false, error: e?.message || String(e) }; } },
+  broadcastButtons: async (payload = {}) => {
+    try {
+      emitUpdate('buttons.update', payload);
+      return true;
+    } catch (e) { return { ok: false, error: e?.message || String(e) }; }
+  },
   performAction: async (button) => {
     try {
       const b = (button && button.result) ? button.result : button;
       if (!b || typeof b !== 'object') return false;
       const type = String(b.actionType || '').trim();
       const payload = b.actionPayload || {};
+      if (type === 'app') {
+        try {
+          const opened = await functions.openApplicationsWindow();
+          return !!opened;
+        } catch (e) { return { ok: false, error: e?.message || String(e) }; }
+      }
       if (type === 'plugin') {
         const pid = String(payload.pluginId || '').trim();
         const fn = String(payload.fn || '').trim();
@@ -210,7 +308,12 @@ const functions = {
         const p = String(payload.path || '').trim();
         const args = Array.isArray(payload.args) ? payload.args : [];
         if (!p) return false;
-        try { const child = spawn(p, args, { detached: true, stdio: 'ignore' }); child.unref(); return true; } catch (e) { return { ok: false, error: e?.message || String(e) }; }
+        try {
+          if (p.toLowerCase().endsWith('.lnk')) {
+            try { await shell.openPath(p); return true; } catch {}
+          }
+          const child = spawn(p, args, { detached: true, stdio: 'ignore' }); child.unref(); return true;
+        } catch (e) { return { ok: false, error: e?.message || String(e) }; }
       }
       if (type === 'command') {
         const cmd = String(payload.cmd || '').trim();
@@ -268,11 +371,6 @@ const functions = {
           return true;
         } catch (e) { return { ok: false, error: e?.message || String(e) }; }
       }
-      if (type === 'wait') {
-        const seconds = Number(payload.seconds || payload.sec || 0);
-        await new Promise((r) => setTimeout(r, Math.max(0, Math.floor(seconds * 1000))));
-        return true;
-      }
       return false;
     } catch (e) {
       return { ok: false, error: e?.message || String(e) };
@@ -292,6 +390,49 @@ const functions = {
       if (res && res.ok && Array.isArray(res.events)) return res.events;
       return [];
     } catch (e) { return []; }
+  },
+  listInstalledApps: () => {
+    try {
+      if (process.platform !== 'win32') return [];
+      const now = Date.now();
+      if (__appsCache.list.length && (now - __appsCache.ts) < 600000) return __appsCache.list.slice(0, 300);
+      if (!__appsCache.building) { __appsCache.building = true; buildAppsCache().finally(() => { __appsCache.building = false; }); }
+      const roots = [
+        path.join(String(process.env['ProgramData']||''), 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
+        path.join(String(process.env['AppData']||''), 'Microsoft', 'Windows', 'Start Menu', 'Programs')
+      ].filter(p => p && fs.existsSync(p));
+      const out = [];
+      const seen = new Set();
+      const isExe = (p) => String(p||'').toLowerCase().endsWith('.exe');
+      const isLnk = (p) => String(p||'').toLowerCase().endsWith('.lnk');
+      const pushApp = (p) => { try { const key = String(p||'').toLowerCase(); if (!key) return; if (seen.has(key)) return; seen.add(key); const nm = path.basename(p, path.extname(p)); out.push({ name: nm, path: p }); } catch {} };
+      roots.forEach((root) => {
+        try {
+          const dirs = fs.readdirSync(root, { withFileTypes: true });
+          dirs.forEach((d) => {
+            const p1 = path.join(root, d.name);
+            try { if (d.isFile() && (isExe(p1) || isLnk(p1))) { pushApp(p1); return; } } catch {}
+            if (d.isDirectory()) {
+              try {
+                const files = fs.readdirSync(p1, { withFileTypes: true });
+                files.forEach((f) => { try { const p2 = path.join(p1, f.name); if (f.isFile() && (isExe(p2) || isLnk(p2))) pushApp(p2); } catch {} });
+              } catch {}
+            }
+          });
+        } catch {}
+      });
+      return out.slice(0, 120);
+    } catch { return []; }
+  },
+  getFileIconDataUrl: async (p) => {
+    try {
+      const fp = String(p||''); if (!fp) return '';
+      let usePath = fp;
+      try { const target = resolveShortcutTarget(fp); if (target) usePath = target; } catch {}
+      const img = await app.getFileIcon(usePath, { size: 'normal' });
+      if (!img || img.isEmpty()) return '';
+      return img.toDataURL();
+    } catch { return ''; }
   },
   setExpandedWindow: (on, wOpt, hOpt) => {
     try {
@@ -320,8 +461,98 @@ const functions = {
       try { lockWindowSize(size.width, size.height); } catch {}
       try { state.lockWidth = size.width; state.lockHeight = size.height; } catch {}
       try { setTimeout(() => { state.sizing = false; }, 60); } catch {}
+      try {
+        if (appWin && !appWin.isDestroyed()) {
+          const awb = appWin.getBounds();
+          const ax = nx + Math.floor(size.width / 2) - Math.floor(awb.width / 2);
+          let ay = ny - awb.height - 8;
+          const display2 = screen.getDisplayNearestPoint ? screen.getDisplayNearestPoint({ x: ax + Math.floor(awb.width/2), y: ay + Math.floor(awb.height/2) }) : screen.getPrimaryDisplay();
+          const sb2 = display2.bounds;
+          if (ax < sb2.x) ax = sb2.x;
+          if (ay < sb2.y) ay = sb2.y;
+          if (ax + awb.width > sb2.x + sb2.width) ax = sb2.x + sb2.width - awb.width;
+          if (ay + awb.height > sb2.y + sb2.height) ay = sb2.y + sb2.height - awb.height;
+          try { appWin.setBounds({ x: Math.floor(ax), y: Math.floor(ay), width: awb.width, height: awb.height }); } catch {}
+        }
+      } catch {}
       return true;
     } catch { return false; }
+  },
+  openApplicationsWindow: () => {
+    try {
+      const targetW = 420;
+      const targetH = 520;
+      const computePos = () => {
+        let nx = 0; let ny = 0;
+        let useW = targetW; let useH = targetH;
+        try {
+          if (compassWin && !compassWin.isDestroyed()) {
+            const wb = compassWin.getBounds();
+            nx = wb.x + Math.floor((wb.width - useW) / 2);
+            ny = wb.y - useH - 8;
+            const display = screen.getDisplayNearestPoint ? screen.getDisplayNearestPoint({ x: nx + Math.floor(useW / 2), y: ny + Math.floor(useH / 2) }) : screen.getPrimaryDisplay();
+            const sb = display.bounds;
+            if (nx < sb.x) nx = sb.x;
+            if (ny < sb.y) ny = sb.y;
+            if (nx + useW > sb.x + sb.width) nx = sb.x + sb.width - useW;
+            if (ny + useH > sb.y + sb.height) ny = sb.y + sb.height - useH;
+            return { x: nx, y: ny, width: useW, height: useH };
+          }
+        } catch {}
+        const d = screen.getPrimaryDisplay();
+        const b = d.bounds;
+        return { x: b.x + Math.floor((b.width - useW) / 2), y: b.y + Math.floor((b.height - useH) / 2), width: useW, height: useH };
+      };
+      if (appWin && !appWin.isDestroyed()) { try { appWin.show(); appWin.focus(); } catch {} return true; }
+      const pos = computePos();
+      const isLinux = process.platform === 'linux';
+      appWin = new BrowserWindow({
+        x: pos.x,
+        y: pos.y,
+        width: pos.width,
+        height: pos.height,
+        useContentSize: true,
+        frame: false,
+        transparent: false,
+        backgroundColor: '#101820',
+        show: true,
+        resizable: false,
+        movable: true,
+        minimizable: false,
+        maximizable: false,
+        fullscreenable: false,
+        skipTaskbar: true,
+        alwaysOnTop: true,
+        type: isLinux ? 'toolbar' : undefined,
+        focusable: true,
+        hasShadow: true,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          preload: path.join(__dirname, 'preload.js')
+        }
+      });
+      appWin.loadFile(path.join(__dirname, 'background', 'app-window.html'));
+      try { appWin.on('closed', () => { appWin = null; }); } catch {}
+      try { pluginApi.emit(state.eventChannel, { type: 'app.active', active: true }); } catch {}
+      return true;
+    } catch { return false; }
+  },
+  closeApplicationsWindow: () => {
+    try {
+      const had = !!(appWin && !appWin.isDestroyed());
+      if (had) { try { appWin.close(); } catch {} appWin = null; }
+      try { pluginApi.emit(state.eventChannel, { type: 'app.active', active: false }); } catch {}
+      return had;
+    } catch { return false; }
+  },
+  openMainProgram: async () => {
+    try {
+      const exe = process.execPath;
+      const child = spawn(exe, [], { detached: true, stdio: 'ignore' });
+      child.unref();
+      return true;
+    } catch (e) { return { ok: false, error: e?.message || String(e) }; }
   },
   setDragging: (flag, offsetX, offsetY, inputType) => {
     try {
@@ -393,6 +624,18 @@ const functions = {
       const W = state.lockWidth || wb.width;
       const H = state.lockHeight || wb.height;
       compassWin.setBounds({ x: Math.floor(nx), y: Math.floor(ny), width: W, height: H });
+      try {
+        if (appWin && !appWin.isDestroyed()) {
+          const awb = appWin.getBounds();
+          let ax = nx + Math.floor(W / 2) - Math.floor(awb.width / 2);
+          let ay = ny - awb.height - 8;
+          if (ax < sb.x) ax = sb.x;
+          if (ay < sb.y) ay = sb.y;
+          if (ax + awb.width > sb.x + sb.width) ax = sb.x + sb.width - awb.width;
+          if (ay + awb.height > sb.y + sb.height) ay = sb.y + sb.height - awb.height;
+          appWin.setBounds({ x: Math.floor(ax), y: Math.floor(ay), width: awb.width, height: awb.height });
+        }
+      } catch {}
       return true;
     } catch { return false; }
   },
@@ -419,6 +662,18 @@ const functions = {
       if (Math.abs(wb.y - b.y) <= th) y = b.y;
       if (Math.abs((wb.y + wb.height) - (b.y + b.height)) <= th) y = b.y + b.height - wb.height;
       if (x !== wb.x || y !== wb.y) compassWin.setPosition(x, y);
+      try {
+        if (appWin && !appWin.isDestroyed()) {
+          const awb = appWin.getBounds();
+          let ax = x + Math.floor(wb.width / 2) - Math.floor(awb.width / 2);
+          let ay = y - awb.height - 8;
+          if (ax < b.x) ax = b.x;
+          if (ay < b.y) ay = b.y;
+          if (ax + awb.width > b.x + b.width) ax = b.x + b.width - awb.width;
+          if (ay + awb.height > b.y + b.height) ay = b.y + b.height - awb.height;
+          appWin.setBounds({ x: Math.floor(ax), y: Math.floor(ay), width: awb.width, height: awb.height });
+        }
+      } catch {}
       return true;
     } catch { return false; }
   }

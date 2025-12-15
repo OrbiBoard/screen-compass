@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>应用</title>
+    <link rel="stylesheet" href="../../../renderer/remixicon-local.css" />
+    <style>
+      :root { --fg:#e6f0ff; --muted:#88a; --bg:#101820; --panel:#162030; --border:rgba(255,255,255,0.18); --accent:rgba(138,180,248,0.4); }
+      html, body { height:100%; }
+      body { margin:0; background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Microsoft YaHei', sans-serif; }
+      .root { display:flex; flex-direction:column; height:100%; }
+      .topbar { display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid var(--border); background: rgba(20,28,40,0.75); backdrop-filter: blur(8px); }
+      .title { display:flex; align-items:center; gap:8px; font-weight:600; }
+      .btn { height:30px; border-radius:8px; border:1px solid var(--border); background: rgba(255,255,255,0.08); color: var(--fg); cursor:pointer; padding:0 10px; display:flex; align-items:center; gap:6px; }
+      .content { flex:1; display:flex; flex-direction:column; padding:8px; gap:8px; }
+      .grid-wrap { position:relative; border:1px solid var(--border); border-radius:10px; background: rgba(16,24,36,0.85); display:flex; flex-direction:column; height:340px; padding:44px 8px; }
+      .grid-scroll { flex:1; overflow-y:auto; position:relative; z-index:1; }
+      .grid { display:grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 100px; gap:8px; padding:4px; }
+      .cell { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; border:1px solid rgba(255,255,255,0.12); border-radius:10px; background: rgba(255,255,255,0.06); user-select: none; cursor: pointer; position: relative; }
+      .cell .name { font-size:12px; text-align:center; color: var(--fg); max-width: 96%; overflow:hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .icon-wrap { position: relative; width: 28px; height: 28px; display:flex; align-items:center; justify-content:center; }
+      .cell .pin { position:absolute; top:6px; right:6px; width:16px; height:16px; display:flex; align-items:center; justify-content:center; border-radius:6px; background: rgba(255,255,255,0.18); border:1px solid rgba(255,255,255,0.22); }
+      .arrow { position:absolute; left:50%; transform: translateX(-50%); width:96px; height:28px; border-radius:14px; border:1px solid var(--border); background: rgba(255,255,255,0.08); color: var(--fg); display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:10; box-shadow: 0 2px 8px rgba(0,0,0,0.3); backdrop-filter: blur(6px); }
+      .arrow.up { top:8px; }
+      .arrow.down { bottom:8px; }
+      .arrow i { font-size:18px; }
+      .grid-scroll::-webkit-scrollbar{ width:10px; }
+      .grid-scroll::-webkit-scrollbar-thumb{ background: rgba(138,180,248,0.55); border-radius:10px; border: 2px solid rgba(255,255,255,0.08); }
+      .grid-scroll::-webkit-scrollbar-thumb:hover{ background: rgba(138,180,248,0.75); }
+      .grid-scroll::-webkit-scrollbar-track{ background: rgba(255,255,255,0.06); border-radius:10px; }
+      .grid-scroll{ scrollbar-width: thin; scrollbar-color: rgba(138,180,248,0.6) rgba(255,255,255,0.08); }
+    </style>
+  </head>
+  <body>
+    <div class="root">
+      <div class="topbar">
+        <div class="title"><i class="ri-apps-2-line"></i><span>应用</span></div>
+        <div style="display:flex; gap:8px;">
+          <button id="openMain" class="btn"><i class="ri-window-2-line"></i><span>打开主程序</span></button>
+          <button id="collapse" class="btn"><i class="ri-close-line"></i><span>收起</span></button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="grid-wrap">
+          <div class="arrow up" id="arrowUp"><i class="ri-arrow-up-s-line"></i></div>
+          <div class="grid-scroll" id="gridScroll">
+            <div class="grid" id="grid"></div>
+          </div>
+          <div class="arrow down" id="arrowDown"><i class="ri-arrow-down-s-line"></i></div>
+        </div>
+      </div>
+    </div>
+    <script>
+      const grid = document.getElementById('grid');
+      const gridScroll = document.getElementById('gridScroll');
+      const arrowUp = document.getElementById('arrowUp');
+      const arrowDown = document.getElementById('arrowDown');
+      function updateArrows(){
+        try{
+          const canUp = gridScroll.scrollTop > 0;
+          const canDown = (gridScroll.scrollTop + gridScroll.clientHeight) < gridScroll.scrollHeight;
+          arrowUp.style.opacity = canUp ? '1' : '0.3';
+          arrowDown.style.opacity = canDown ? '1' : '0.3';
+        }catch{}
+      }
+      arrowUp.onclick = () => { try{ gridScroll.scrollBy({ top: -gridScroll.clientHeight, behavior: 'smooth' }); }catch{} };
+      arrowDown.onclick = () => { try{ gridScroll.scrollBy({ top: gridScroll.clientHeight, behavior: 'smooth' }); }catch{} };
+      gridScroll.addEventListener('scroll', updateArrows);
+      document.getElementById('collapse').onclick = async () => { try { await window.compassAPI.pluginCall('screen.compass','closeApplicationsWindow',[]); } catch {} };
+      document.getElementById('openMain').onclick = async () => { try { await window.compassAPI.pluginCall('screen.compass','openMainProgram',[]); } catch {} };
+      function iconHtml(ic){
+        const s = String(ic||'').trim();
+        if (s.startsWith('ri-')) return `<div class="icon-wrap"><i class="${s}" style="font-size:28px;"></i></div>`;
+        if (s) return `<div class="icon-wrap"><img src="${s}" style="width:28px;height:28px;object-fit:contain;border-radius:6px;" /></div>`;
+        return `<div class="icon-wrap"><i class="ri-puzzle-line" style="font-size:28px;"></i></div>`;
+      }
+      let pins = [];
+      async function load(){
+        try{
+          const res = await window.compassAPI.pluginCall('screen.compass','listPlugins',[]);
+          const list = (res&&res.result)?res.result:res;
+          const plugins = Array.isArray(list)?list:[];
+          try { const raw = await window.compassAPI.configGet('screen.compass','appPins'); const vals = (raw&&raw.result)?raw.result:raw; pins = Array.isArray(vals)?vals:[]; } catch { pins = []; }
+          grid.innerHTML = '';
+          const withActs = plugins.filter(p => Array.isArray(p.actions) && p.actions.length);
+          const sortPlugins = withActs.slice().sort((a,b)=>{ const ap = pins.includes(a.id)?1:0; const bp = pins.includes(b.id)?1:0; if (ap!==bp) return bp-ap; return String(a.name||a.id).localeCompare(String(b.name||b.id)); });
+          sortPlugins.forEach((p)=>{
+            const acts = Array.isArray(p.actions)?p.actions:[];
+            if (!acts.length) return;
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            const nm = String(p.name||p.id||'').trim();
+            const ic = String(p.icon||'').trim();
+            cell.innerHTML = `${iconHtml(ic)}<div class="name">${nm}</div>`;
+            const isPinned = pins.includes(p.id);
+            if (isPinned) {
+              try { cell.classList.add('pinned'); } catch {}
+              const pin = document.createElement('div'); pin.className='pin'; pin.innerHTML = `<i class="ri-pushpin-fill" style="font-size:12px;"></i>`;
+              cell.appendChild(pin);
+            }
+            let pressTimer = null; let longPressed = false;
+            const clearPress = () => { try{ if(pressTimer) clearTimeout(pressTimer); pressTimer=null; }catch{} };
+            const getActions = () => { try{ const acts = Array.isArray(p.actions)?p.actions:[]; return acts; }catch{ return [] } };
+            const callActionByIndex = async (idx) => {
+              try {
+                const acts = getActions();
+                const a = acts[idx];
+                const fn = String(a?.target||a?.id||'').trim();
+                const pid = String(p.id||'').trim();
+                if (!pid || !fn) return;
+                await window.compassAPI.pluginCall(pid, fn, []);
+              } catch {}
+            };
+            const showActionsOverlay = () => {
+              try {
+                const acts = getActions();
+                const overlay=document.createElement('div');
+                overlay.style.position='fixed'; overlay.style.inset='0'; overlay.style.background='rgba(6,12,24,0.6)'; overlay.style.backdropFilter='blur(6px)'; overlay.style.zIndex='9999'; overlay.style.padding='12px'; overlay.style.boxSizing='border-box';
+                const panel=document.createElement('div'); panel.style.maxHeight='70vh'; panel.style.overflow='hidden'; panel.style.border='1px solid rgba(255,255,255,0.2)'; panel.style.borderRadius='8px'; panel.style.background='rgba(16,24,36,0.8)'; panel.style.padding='12px'; panel.style.width='min(480px, 92vw)'; panel.style.margin='0 auto'; panel.style.boxSizing='border-box';
+                const title=document.createElement('div'); title.innerHTML=`<span style="color:#e6f0ff;">选择动作：${nm}</span>`; title.style.marginTop='8px';
+                const close=document.createElement('div'); close.style.textAlign='right'; close.innerHTML='<button class="btn"><i class="ri-close-line"></i><span>关闭</span></button>';
+                const listEl=document.createElement('div'); listEl.style.display='flex'; listEl.style.flexDirection='column'; listEl.style.gap='8px'; listEl.style.marginTop='8px';
+                const pinRow=document.createElement('button'); pinRow.className='btn'; pinRow.style.justifyContent='space-between'; pinRow.innerHTML=`<span style="display:flex;align-items:center;gap:8px;"><i class="${isPinned?'ri-pushpin-fill':'ri-pushpin-line'}"></i>${isPinned?'取消置顶':'置顶'}</span><i class="ri-arrow-right-s-line"></i>`;
+                pinRow.onclick=async()=>{ try { const now = pins.includes(p.id); if (now) pins = pins.filter(id=>id!==p.id); else pins = [...new Set([...(pins||[]), p.id])]; await window.compassAPI.configSet('screen.compass','appPins', pins); document.body.removeChild(overlay); load(); } catch {} };
+                listEl.appendChild(pinRow);
+                acts.forEach((a, idx)=>{
+                  const row=document.createElement('button'); row.className='btn'; row.style.justifyContent='space-between';
+                  const txt=String(a?.text||a?.id||a?.target||'').trim();
+                  const ic2=String(a?.icon||'').trim();
+                  row.innerHTML=`<span style="display:flex;align-items:center;gap:8px;"><i class="${ic2||'ri-play-line'}"></i>${txt}</span><i class="ri-arrow-right-s-line"></i>`;
+                  row.onclick=async()=>{ try{ await callActionByIndex(idx); document.body.removeChild(overlay); try { await window.compassAPI.pluginCall('screen.compass','closeApplicationsWindow',[]); } catch {} }catch{} };
+                  listEl.appendChild(row);
+                });
+                panel.appendChild(close); panel.appendChild(title); panel.appendChild(listEl);
+                overlay.appendChild(panel);
+                document.body.appendChild(overlay);
+                close.onclick=()=>{ try{ document.body.removeChild(overlay) }catch{} };
+              } catch {}
+            };
+            cell.addEventListener('mousedown', () => { longPressed=false; clearPress(); pressTimer=setTimeout(()=>{ longPressed=true; showActionsOverlay(); }, 600); });
+            cell.addEventListener('mouseup', async () => { const wasLong = longPressed; clearPress(); if (!wasLong) { await callActionByIndex(0); try { await window.compassAPI.pluginCall('screen.compass','closeApplicationsWindow',[]); } catch {} } });
+            cell.addEventListener('mouseleave', () => { clearPress(); });
+            cell.addEventListener('contextmenu', (e) => { try{ e.preventDefault(); }catch{} showActionsOverlay(); });
+            grid.appendChild(cell);
+          });
+          updateArrows();
+        }catch{}
+      }
+      load();
+      document.getElementById('openMain').onclick = async () => { try { await window.compassAPI.openMainSettings(); } catch {} };
+    </script>
+  </body>
+</html>
