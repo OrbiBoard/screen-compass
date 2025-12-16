@@ -23,12 +23,14 @@ body { margin: 0; background: transparent; display:flex; align-items:center; jus
 .classic .item i { color:#ffffff; font-size: 19px; }
 .classic .item .label { font-size: 11px; line-height: 12px; max-width: 48px; margin: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sector .item { background: transparent; border: none; }
-.htray { position:absolute; display:none; height:58px; align-items:center; gap:8px; padding:6px 8px; pointer-events:auto; z-index: 3; }
+.htray { position:absolute; display:none; height:58px; align-items:center; gap:8px; pointer-events:auto; z-index: 3; }
 .htray .item { position:relative; width:56px; }
 .htray .item:hover { transform: none; }
 .htray .item { background: transparent; border: none; }
 .htray .item:hover, .htray .item:active { background: rgba(20,28,40,0.52); border: 1px solid rgba(255,255,255,0.28); }
 .htray .item.active { background: rgba(64,128,255,0.28); border: 1px solid rgba(64,128,255,0.42); }
 .htray .item .label { max-width:56px; }
+.htray { transition: left .22s ease, width .22s ease, opacity .18s ease, transform .22s ease, top .22s ease, height .22s ease; }
 .hbg { position:absolute; z-index: 2; pointer-events:none; }
 .hbg { background: transparent; }
+.hbg { transition: left .22s ease, width .22s ease, opacity .18s ease, top .22s ease, height .22s ease, border-radius .22s ease; }

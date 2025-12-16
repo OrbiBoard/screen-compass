@@ -225,6 +225,17 @@ const functions = {
       return true;
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
   },
+  touchDragMoveAbs: (ax, ay) => {
+    try {
+      if (!compassWin || compassWin.isDestroyed()) return false;
+      if (!state.dragging || state.dragInputType !== 'touch') return false;
+      const sx = Math.floor(Number(ax||0));
+      const sy = Math.floor(Number(ay||0));
+      const nx = Math.floor(sx - state.dragOffsetX);
+      const ny = Math.floor(sy - state.dragOffsetY);
+      return functions.moveTo(nx, ny);
+    } catch { return false; }
+  },
   onLowbarEvent: async (payload = {}) => {
     try {
       if (payload?.type === 'left.click') {

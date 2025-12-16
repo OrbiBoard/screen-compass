@@ -66,6 +66,7 @@
       .num { display:flex; align-items:center; gap:6px; flex: 1 1 auto; }
       .btn.step { height: 30px; width: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
       .actions { background: rgba(16,24,36,0.25); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 8px; }
+      #pvTopTray .item.active { background: rgba(64,128,255,0.28); border: 1px solid rgba(64,128,255,0.42); }
 
     </style>
   </head>
@@ -275,11 +276,56 @@
           try { topTray.style.display = 'flex'; } catch {}
           const itemWidth = 56; const gap = 8; const pad = 16;
           const totalW = (N>0)? (N*itemWidth + Math.max(0,N-1)*gap + pad) : pad;
+          const nearMargin = 18;
+          const btnTopFixed = 12;
+          const centerSize = Number(window.__centerSize || 50);
+          const trayHeight = Math.max(Math.round(centerSize) + 8, 48);
+          const bgHeight = Math.max(Math.round(centerSize) + 18, 56);
           try { topBg.style.display = 'block'; } catch {}
-          try { topBg.style.width = 'auto'; } catch {}
+          const wrap = document.getElementById('pvTopTrayWrap');
+          const Wwrap = Math.max(200, Math.floor(wrap.getBoundingClientRect().width || 240));
+          const bgPadH = 8;
+          const bgWidth = Math.max(0, centerSize + 24 + totalW + bgPadH * 2);
+          const dir = (theme==='hleft') ? -1 : 1;
+          const centerBaseX = (dir < 0) ? (Wwrap - nearMargin - Math.round(centerSize)) : nearMargin;
+          let bgLeft = 12;
+          let trayLeft = 0;
+          if (dir < 0) {
+            const bgPadH2 = 8;
+            const trayShift = 3;
+            const trayLeftBase = Math.max(0, centerBaseX - (totalW + 16));
+            trayLeft = trayLeftBase + trayShift;
+            bgLeft = Math.max(12, trayLeftBase - bgPadH2);
+          } else {
+            const bgPadH2 = 8;
+            bgLeft = Math.max(12, centerBaseX - 12 - bgPadH2);
+            const trayShift = 3;
+            const trayLeftBase = 74;
+            trayLeft = trayLeftBase + trayShift;
+          }
+          try { topBg.style.left = bgLeft + 'px'; topBg.style.right = 'auto'; } catch {}
+          try { topBg.style.width = bgWidth + 'px'; } catch {}
+          try { topBg.style.height = bgHeight + 'px'; topBg.style.borderRadius = Math.round(bgHeight/2) + 'px'; } catch {}
+          const trayTop = Math.max(0, Math.round((bgHeight - trayHeight) / 2));
+          try { topTray.style.height = trayHeight + 'px'; topTray.style.marginTop = trayTop + 'px'; } catch {}
+          try { topTray.style.width = totalW + 'px'; } catch {}
+          const justify = (theme==='hleft') ? 'flex-end' : 'flex-start';
+          try { topTray.style.justifyContent = justify; } catch {}
+          try { topTray.style.position = 'relative'; topTray.style.left = trayLeft + 'px'; } catch {}
           topTray.innerHTML = '';
           for(let i=0;i<N;i++){
-            const it=items[i]; const div=document.createElement('div'); div.className='item'; const labelText=String(it.label||'').trim(); const icStr=String(it.icon||''); const useIcon = icStr.startsWith('ri-') ? `<i class="${icStr}"></i>` : `<img src="${icStr}" style="width:20px;height:20px;object-fit:contain;border-radius:4px;" />`; div.innerHTML = `${useIcon}<div class="label">${labelText}</div>`; topTray.appendChild(div)
+            const it=items[i];
+            const div=document.createElement('div');
+            div.className='item';
+            const labelText=String(it.label||'').trim();
+            const icStr=String(it.icon||'');
+            const useIcon = icStr.startsWith('ri-')
+              ? `<i class="${icStr}"></i>`
+              : `<img src="${icStr}" style="width:20px;height:20px;object-fit:contain;border-radius:4px;" />`;
+            div.innerHTML = `${useIcon}<div class="label">${labelText}</div>`;
+            if (typeof window.__selectedIndex==='number' && window.__selectedIndex===i) div.classList.add('active');
+            div.onclick = () => { window.__selectedIndex = i; render(); placePreview(); };
+            topTray.appendChild(div);
           }
         } else {
           try { document.getElementById('pvTopTrayWrap').style.display = 'none'; } catch {}
@@ -541,6 +587,7 @@
           document.getElementById('paneProject').style.display = (id==='project')? 'block' : 'none';
           document.getElementById('paneTheme').style.display = (id==='theme')? 'block' : 'none';
           render();
+          placePreview();
         } catch {}
       }
     </script>

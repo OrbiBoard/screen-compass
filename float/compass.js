@@ -55,7 +55,7 @@ function placeItems() {
   try { rootEl.classList.toggle('sector', theme==='sector'); rootEl.classList.toggle('classic', theme==='classic'); } catch {}
   const centerEl = document.getElementById('center');
   const isH = (theme==='hleft' || theme==='hright');
-  try { hTray.style.display = (isH && expanded) ? 'flex' : 'none'; } catch {}
+  try { hTray.style.display = isH ? 'flex' : 'none'; } catch {}
   try { if (hTrayBg) hTrayBg.style.display = (isH && expanded) ? 'block' : 'none'; } catch {}
   try { if (circleBg) circleBg.style.display = isH ? 'none' : 'block'; } catch {}
   if (theme === 'sector' && N > 0) {
@@ -89,30 +89,44 @@ function placeItems() {
   if (isH) {
     const itemWidth = 56; const gap = 8; const pad = 16; const totalW = (N>0)? (N*itemWidth + Math.max(0, N-1)*gap + pad) : pad;
     const dir = (theme==='hleft') ? -1 : 1;
-    const btnTopFixed = 10;
+    const btnTopFixed = 12;
     let centerLeft, centerTop;
-    const centerX = (theme==='hleft') ? (W - 12 - Math.round(centerSize)) : (12);
+    const nearMargin = 18;
+    const centerShift = 5;
+    const centerBaseX = (theme==='hleft') ? (W - nearMargin - Math.round(centerSize)) : nearMargin;
+    const centerX = centerBaseX + centerShift;
     centerLeft = centerX; centerTop = btnTopFixed;
     try { centerEl.style.position = 'absolute'; centerEl.style.left = centerLeft + 'px'; centerEl.style.top = centerTop + 'px'; centerEl.style.display = 'flex'; centerEl.style.alignItems = 'center'; centerEl.style.justifyContent = 'center'; centerEl.style.zIndex = '3'; } catch {}
-    const bgHeightFixed = 72;
-    const bgTop = btnTopFixed + Math.round(centerSize/2) - Math.round(bgHeightFixed/2);
+    const centerY = btnTopFixed + Math.round(centerSize/2);
+    const trayHeight = Math.max(Math.round(centerSize) + 8, 48);
+    const bgHeight = Math.max(Math.round(centerSize) + 18, 56);
+    const bgTop = Math.max(0, centerY - Math.round(bgHeight/2));
+    const trayTop = Math.max(0, bgTop + Math.round((bgHeight - trayHeight) / 2));
     let bgLeft, bgWidth, trayLeft;
     if (expanded) {
-      bgWidth = centerSize + 24 + totalW;
+      const bgPadH = 8;
+      bgWidth = centerSize + 24 + totalW + bgPadH * 2;
       if (dir < 0) {
-        bgLeft = 24;
-        trayLeft = Math.max(0, centerLeft - (totalW + 16));
+        const bgPadH2 = 8;
+        const trayShift = 3;
+        const trayLeftBase = Math.max(0, centerBaseX - (totalW + 16));
+        trayLeft = trayLeftBase + trayShift;
+        bgLeft = Math.max(0, trayLeftBase - bgPadH2);
         hTray.style.left = trayLeft + 'px';
-        hTray.style.top = '6px';
+        hTray.style.top = trayTop + 'px';
+        hTray.style.height = trayHeight + 'px';
         hTray.style.width = totalW + 'px';
-        bgWidth = Math.max(0, centerSize + 24 + totalW - 8);
         try { hTray.style.justifyContent = 'flex-end'; } catch {}
         try { hTray.style.zIndex = '2'; } catch {}
       } else {
-        bgLeft = Math.max(0, centerLeft - 12);
-        trayLeft = 74;
-        hTray.style.left = '74px';
-        hTray.style.top = '6px';
+        const bgPadH2 = 8;
+        bgLeft = Math.max(0, centerBaseX - 12 - bgPadH2);
+        const trayShift = 3;
+        const trayLeftBase = 74;
+        trayLeft = trayLeftBase + trayShift;
+        hTray.style.left = trayLeft + 'px';
+        hTray.style.top = trayTop + 'px';
+        hTray.style.height = trayHeight + 'px';
         hTray.style.width = totalW + 'px';
         try { hTray.style.justifyContent = 'flex-start'; } catch {}
         try { hTray.style.zIndex = '2'; } catch {}
@@ -120,23 +134,23 @@ function placeItems() {
     } else {
       bgLeft = centerLeft;
       bgWidth = centerSize + 24;
+      try {
+        hTray.style.top = trayTop + 'px';
+        hTray.style.height = trayHeight + 'px';
+        hTray.style.width = '0px';
+      } catch {}
     }
     if (hTrayBg) {
       try {
         if (expanded) {
           hTrayBg.style.display = 'block';
-          if (dir < 0) {
-            hTrayBg.style.left = '24px';
-            hTrayBg.style.top = '6px';
-          } else {
-            hTrayBg.style.left = '8px';
-            hTrayBg.style.top = '6px';
-          }
+          hTrayBg.style.left = Math.max(0, bgLeft) + 'px';
+          hTrayBg.style.top = bgTop + 'px';
           hTrayBg.style.width = bgWidth + 'px';
-          hTrayBg.style.height = '68px';
+          hTrayBg.style.height = bgHeight + 'px';
           hTrayBg.style.background = 'rgba(20,28,40,0.52)';
           hTrayBg.style.border = '1px solid rgba(255,255,255,0.28)';
-          hTrayBg.style.borderRadius = '54px';
+          hTrayBg.style.borderRadius = Math.round(bgHeight/2) + 'px';
           try { hTrayBg.style.zIndex = '1'; } catch {}
         }
       } catch {}
@@ -189,7 +203,8 @@ function setExpanded(on) {
   try { const centerEl = document.getElementById('center'); const rootEl = document.getElementById('root'); const isH = (theme==='hleft' || theme==='hright'); if (isH) { if (!expanded) { const cr = centerEl.getBoundingClientRect(); const rr = rootEl.getBoundingClientRect(); hAnchorLeft = Math.max(0, Math.round(cr.left - rr.left)); hAnchorTop = Math.max(0, Math.round(cr.top - rr.top)); } } else { hAnchorLeft=null; hAnchorTop=null; } } catch {}
   const nodes = Array.from(ring.children);
   nodes.forEach(n => { if (expanded) { n.classList.remove('hidden'); } else { n.classList.add('hidden'); } });
-  try { const hTray = document.getElementById('hTray'); const hTrayBg = document.getElementById('hTrayBg'); const isH = (theme==='hleft' || theme==='hright'); hTray.style.opacity = expanded ? '1' : '0'; hTray.style.pointerEvents = expanded ? 'auto' : 'none'; hTray.style.display = (isH && expanded) ? 'flex' : 'none'; if (hTrayBg) hTrayBg.style.display = (isH && expanded) ? 'block' : 'none'; } catch {}
+  try { const hTray = document.getElementById('hTray'); const hTrayBg = document.getElementById('hTrayBg'); const isH = (theme==='hleft' || theme==='hright'); hTray.style.opacity = expanded ? '1' : '0'; hTray.style.pointerEvents = expanded ? 'auto' : 'none'; hTray.style.display = isH ? 'flex' : 'none'; if (hTrayBg) hTrayBg.style.display = (isH && expanded) ? 'block' : 'none'; } catch {}
+  try { const hTray = document.getElementById('hTray'); const hTrayBg = document.getElementById('hTrayBg'); const isH = (theme==='hleft' || theme==='hright'); hTray.style.opacity = expanded ? '1' : '0'; hTray.style.pointerEvents = expanded ? 'auto' : 'none'; hTray.style.display = isH ? 'flex' : 'none'; if (hTrayBg) hTrayBg.style.display = (isH && expanded) ? 'block' : 'none'; } catch {}
 }
 
 center.addEventListener('click', () => { if (dragging || justDragged || toggleLock) return; toggleLock = true; setExpanded(!expanded); setTimeout(() => { toggleLock = false; }, 160); });
@@ -198,8 +213,44 @@ let inactivityTimer = null;
 function resetInactivityTimer(){ try { if (theme==='hleft' || theme==='hright') return; if (inactivityTimer) clearTimeout(inactivityTimer); inactivityTimer = setTimeout(() => { if (expanded) setExpanded(false); }, 30000); } catch {} }
 
 let dragging = false; let startScreenX = 0; let startScreenY = 0; let lastScreenX = 0; let lastScreenY = 0; let lastClientX = 0; let lastClientY = 0; let startWinX = 0; let startWinY = 0; let moved = false; let justDragged = false; let rafScheduled = false; let nextX = 0; let nextY = 0; let downClientX = 0; let downClientY = 0; let boundsReady = false;
+let touchMoveRafId = 0; let touchPending = null;
 function onPointerDown(e){ dragging = true; moved = false; boundsReady = false; startScreenX = e.screenX; startScreenY = e.screenY; lastScreenX = startScreenX; lastScreenY = startScreenY; downClientX = e.clientX; downClientY = e.clientY; lastClientX = downClientX; lastClientY = downClientY; const inputType = String(e.pointerType||'').toLowerCase(); try { e.preventDefault(); } catch {} try { center.setPointerCapture(e.pointerId); } catch {} window.compassAPI.getBounds().then((raw)=>{ const b = (raw && raw.result) ? raw.result : raw; startWinX = (b && typeof b.x==='number')? b.x:0; startWinY = (b && typeof b.y==='number')? b.y:0; boundsReady = true; const offsetX = Math.max(0, (typeof e.screenX === 'number' ? e.screenX : 0) - startWinX); const offsetY = Math.max(0, (typeof e.screenY === 'number' ? e.screenY : 0) - startWinY); try { window.compassAPI.pluginCall('screen.compass','setDragging',[true, offsetX, offsetY, inputType]); } catch {} }); }
-function onPointerMove(e){ if (!dragging) return; try { const evs = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null; if (evs && evs.length) { const le = evs[evs.length-1]; lastClientX = le.clientX; lastClientY = le.clientY; lastScreenX = le.screenX; lastScreenY = le.screenY; } else { lastClientX = e.clientX; lastClientY = e.clientY; lastScreenX = e.screenX; lastScreenY = e.screenY; } } catch { lastClientX = e.clientX; lastClientY = e.clientY; lastScreenX = e.screenX; lastScreenY = e.screenY; } if (!boundsReady) { return; } const dx = lastClientX - downClientX, dy = lastClientY - downClientY; if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true; try { e.preventDefault(); } catch {} if (dragging && boundsReady && String(e.pointerType||'').toLowerCase()==='touch') { const dx = lastClientX - downClientX; const dy = lastClientY - downClientY; try { window.compassAPI.pluginCall('screen.compass','touchDragMove',[dx, dy]); } catch {} } }
+function onPointerMove(e){
+  if (!dragging) return;
+  try {
+    const evs = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null;
+    if (evs && evs.length) {
+      const le = evs[evs.length-1];
+      lastClientX = le.clientX; lastClientY = le.clientY;
+      lastScreenX = le.screenX; lastScreenY = le.screenY;
+    } else {
+      lastClientX = e.clientX; lastClientY = e.clientY;
+      lastScreenX = e.screenX; lastScreenY = e.screenY;
+    }
+  } catch {
+    lastClientX = e.clientX; lastClientY = e.clientY;
+    lastScreenX = e.screenX; lastScreenY = e.screenY;
+  }
+  if (!boundsReady) { return; }
+  const cdx = lastClientX - downClientX, cdy = lastClientY - downClientY;
+  if (Math.abs(cdx) > 2 || Math.abs(cdy) > 2) moved = true;
+  try { e.preventDefault(); } catch {}
+  if (dragging && boundsReady && String(e.pointerType||'').toLowerCase()==='touch') {
+    if (!touchPending) {
+      touchPending = { ax: lastScreenX, ay: lastScreenY };
+      if (!touchMoveRafId) {
+        touchMoveRafId = window.requestAnimationFrame(() => {
+          const p = touchPending;
+          touchPending = null;
+          touchMoveRafId = 0;
+          try { window.compassAPI.touchDragMoveAbs(p.ax, p.ay); } catch {}
+        });
+      }
+    } else {
+      touchPending.ax = lastScreenX; touchPending.ay = lastScreenY;
+    }
+  }
+}
 function onPointerUp(e){ try { center.releasePointerCapture(e.pointerId); } catch {} dragging=false; boundsReady=false; rafScheduled=false; if (moved) { justDragged = true; setTimeout(()=>{ justDragged=false; }, 200); } window.compassAPI.snap(); try { window.compassAPI.pluginCall('screen.compass','setDragging',[false]); } catch {} }
 function onPointerCancel(e){ try { center.releasePointerCapture(e.pointerId); } catch {} dragging=false; boundsReady=false; rafScheduled=false; moved=false; }
 center.addEventListener('pointerdown', onPointerDown);
@@ -211,7 +262,7 @@ function updateCenterIcon(){ try { center.style.width = centerSize + 'px'; cente
 const __origSetExpanded = setExpanded;
 function __fadeSet(el, v){ try { if (!el) return; el.style.transition = 'opacity .16s ease'; el.style.opacity = String(v); } catch {} }
 function __fadeOutAll(){ try { const r=document.getElementById('ring'); const s=document.getElementById('sectors'); const ht=document.getElementById('hTray'); const hb=document.getElementById('hTrayBg'); const cb=document.getElementById('circleBg'); __fadeSet(r, 0); __fadeSet(s, 0); __fadeSet(ht, 0); __fadeSet(hb, 0); __fadeSet(cb, 0); } catch {} }
-function __fadeInAll(){ try { const isH = (theme==='hleft' || theme==='hright'); const r=document.getElementById('ring'); const s=document.getElementById('sectors'); const ht=document.getElementById('hTray'); const hb=document.getElementById('hTrayBg'); const cb=document.getElementById('circleBg'); __fadeSet(r, expanded ? 1 : 0); __fadeSet(s, expanded ? 1 : 0); if (isH) { __fadeSet(ht, expanded ? 1 : 0); __fadeSet(hb, expanded ? 1 : 0); __fadeSet(cb, 0); if (expanded && hb) { hb.style.background='rgba(20,28,40,0.62)'; hb.style.border='1px solid rgba(255,255,255,0.30)'; } } else { __fadeSet(ht, 0); __fadeSet(hb, 0); __fadeSet(cb, 1); if (cb) { if (expanded) { cb.style.background='rgba(20,28,40,0.44)'; cb.style.border='1px solid rgba(255,255,255,0.24)'; } else { cb.style.background='rgba(20,28,40,0.28)'; cb.style.border='1px solid rgba(255,255,255,0.18)'; } } } } catch {} }
+function __fadeInAll(){ try { const isH = (theme==='hleft' || theme==='hright'); const r=document.getElementById('ring'); const s=document.getElementById('sectors'); const ht=document.getElementById('hTray'); const hb=document.getElementById('hTrayBg'); const cb=document.getElementById('circleBg'); __fadeSet(r, expanded ? 1 : 0); __fadeSet(s, expanded ? 1 : 0); if (isH) { __fadeSet(ht, expanded ? 1 : 0); __fadeSet(hb, expanded ? 1 : 0); __fadeSet(cb, 0); try { const dir = (theme==='hleft') ? -1 : 1; if (ht) ht.style.transform = expanded ? 'translateX(0px)' : (dir<0 ? 'translateX(12px)' : 'translateX(-12px)'); } catch {} if (expanded && hb) { hb.style.background='rgba(20,28,40,0.62)'; hb.style.border='1px solid rgba(255,255,255,0.30)'; } } else { __fadeSet(ht, 0); __fadeSet(hb, 0); __fadeSet(cb, 1); if (cb) { if (expanded) { cb.style.background='rgba(20,28,40,0.44)'; cb.style.border='1px solid rgba(255,255,255,0.24)'; } else { cb.style.background='rgba(20,28,40,0.28)'; cb.style.border='1px solid rgba(255,255,255,0.18)'; } } } } catch {} }
 setExpanded = (on) => {
   if (window.__compassToggleTs && Date.now() - window.__compassToggleTs < 140) return;
   window.__compassToggleTs = Date.now();
@@ -224,7 +275,12 @@ setExpanded = (on) => {
       const trayW = on ? (N>0 ? (N*itemW + Math.max(0,N-1)*gap + pad) : pad) : 0;
       const availW = Math.max(0, Number(window.screen?.availWidth || window.innerWidth || document.documentElement.clientWidth || (centerSize + 24)));
       useW = on ? Math.max(centerSize + 24, Math.min(availW, centerSize + 24 + trayW + 24)) : (centerSize + 24);
-      useH = on ? Math.max(centerSize + 24, 58 + 12) : (centerSize + 24);
+      try {
+        const trayH = Math.max(Math.round(centerSize) + 8, 48);
+        useH = on ? Math.max(centerSize + 24, trayH + 24) : (centerSize + 24);
+      } catch {
+        useH = on ? Math.max(centerSize + 24, 58 + 24) : (centerSize + 24);
+      }
       try {
         window.compassAPI.getBounds().then((raw)=>{
           const b = (raw && raw.result) ? raw.result : raw;
@@ -239,7 +295,22 @@ setExpanded = (on) => {
         });
       } catch {}
     }
-    setTimeout(()=>{ try { window.compassAPI.pluginCall('screen.compass','setExpandedWindow',[!!on, useW, useH]); } catch {} }, 120);
+    try {
+      const isH2 = (theme==='hleft' || theme==='hright');
+      if (isH2) {
+        const rootEl = document.getElementById('root');
+        const centerEl = document.getElementById('center');
+        const rr = (rootEl && typeof rootEl.getBoundingClientRect==='function') ? rootEl.getBoundingClientRect() : { width: 0 };
+        const Wnow = Math.max(centerSize + 24, Math.floor(rr.width || window.innerWidth || document.documentElement.clientWidth || (centerSize + 24)));
+        const dir2 = (theme==='hleft') ? -1 : 1;
+        const nearMargin2 = 18;
+        const centerShift2 = 5;
+        const cx2 = (dir2 < 0) ? (Wnow - nearMargin2 - Math.round(centerSize) + centerShift2) : (nearMargin2 + centerShift2);
+        try { centerEl.style.left = cx2 + 'px'; centerEl.style.top = '12px'; } catch {}
+        try { const ht=document.getElementById('hTray'); if (ht) { ht.style.transform = (dir2<0 ? 'translateX(12px)' : 'translateX(-12px)'); } } catch {}
+      }
+    } catch {}
+    setTimeout(()=>{ try { window.compassAPI.pluginCall('screen.compass','setExpandedWindow',[!!on, useW, useH]); } catch {} }, 0);
   } catch {}
   let done = false;
   const run = () => {
@@ -254,8 +325,10 @@ setExpanded = (on) => {
           window.compassAPI.getBounds().then((raw)=>{
             const b2 = (raw && raw.result) ? raw.result : raw;
             const dir = (theme==='hleft') ? -1 : 1;
-            const centerLeftNew = (dir<0 ? (useW - 12 - Math.round(centerSize)) : 12);
-            const centerTopNew = 10;
+            const nearMargin3 = 18;
+            const centerShift3 = 5;
+            const centerLeftNew = (dir<0 ? (useW - nearMargin3 - Math.round(centerSize) + centerShift3) : (nearMargin3 + centerShift3));
+            const centerTopNew = 12;
             let nx = Math.round(preCenterX - centerLeftNew);
             let ny = Math.round(preCenterY - centerTopNew);
             const availW = Math.max(0, Number(window.screen?.availWidth || window.innerWidth || document.documentElement.clientWidth || 0));
