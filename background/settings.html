@@ -125,26 +125,26 @@
             { id: 'rollcall', label: '随机点名', icon: 'ri-shuffle-line', actionType: 'plugin', actionPayload: { pluginId: 'rollcall.random', fn: 'openRollcallTemplate', args: [] } }
           ]
         };
-        try { await window.lowbarAPI.configEnsureDefaults(scope, defaults); } catch {}
+        try { await window.lowbarAPI.configEnsureDefaults(scope, defaults); } catch (e) {}
       }
       async function load(){
         try {
           let raw = await window.lowbarAPI.configGet(scope, 'buttons');
           const list = (raw && raw.result) ? raw.result : raw;
           items = Array.isArray(list) ? list : [];
-          if (!items.length) { try { raw = await window.lowbarAPI.configGet(altScope, 'buttons'); const list2 = (raw && raw.result) ? raw.result : raw; items = Array.isArray(list2) ? list2 : items; } catch {} }
+          if (!items.length) { try { raw = await window.lowbarAPI.configGet(altScope, 'buttons'); const list2 = (raw && raw.result) ? raw.result : raw; items = Array.isArray(list2) ? list2 : items; } catch (e) {} }
           items.forEach(it => { if (it && typeof it==='object') { if (it.actionType==='program') it.actionType='openApp'; if (it.actionType==='command') it.actionType='cmd'; } });
-        } catch { items = []; }
-        try { let v = await window.lowbarAPI.configGet(scope, 'sizeCollapsed'); window.__sizeCollapsed = Number((v && v.result) ? v.result : v) || 60; if (!v) { try { v = await window.lowbarAPI.configGet(altScope, 'sizeCollapsed'); window.__sizeCollapsed = Number((v && v.result) ? v.result : v) || window.__sizeCollapsed; } catch {} } } catch { window.__sizeCollapsed = 60; }
-        try { let v = await window.lowbarAPI.configGet(scope, 'sizeExpanded'); window.__sizeExpanded = Number((v && v.result) ? v.result : v) || 240; if (!v) { try { v = await window.lowbarAPI.configGet(altScope, 'sizeExpanded'); window.__sizeExpanded = Number((v && v.result) ? v.result : v) || window.__sizeExpanded; } catch {} } } catch { window.__sizeExpanded = 240; }
-        try { let v = await window.lowbarAPI.configGet(scope, 'centerSize'); window.__centerSize = Number((v && v.result) ? v.result : v) || 50; if (!v) { try { v = await window.lowbarAPI.configGet(altScope, 'centerSize'); window.__centerSize = Number((v && v.result) ? v.result : v) || window.__centerSize; } catch {} } } catch { window.__centerSize = 50; }
-        try { let v = await window.lowbarAPI.configGet(scope, 'centerIcon'); window.__centerIcon = String((v && v.result) ? v.result : v || 'ri-compass-3-line'); if (!v) { try { v = await window.lowbarAPI.configGet(altScope, 'centerIcon'); const vv = (v && v.result) ? v.result : v; window.__centerIcon = String(vv || window.__centerIcon || 'ri-compass-3-line'); } catch {} } } catch { window.__centerIcon = 'ri-compass-3-line'; }
+        } catch (e) { items = []; }
+        try { let v = await window.lowbarAPI.configGet(scope, 'sizeCollapsed'); window.__sizeCollapsed = Number((v && v.result) ? v.result : v) || 60; if (!v) { try { v = await window.lowbarAPI.configGet(altScope, 'sizeCollapsed'); window.__sizeCollapsed = Number((v && v.result) ? v.result : v) || window.__sizeCollapsed; } catch (e) {} } } catch (e) { window.__sizeCollapsed = 60; }
+        try { let v = await window.lowbarAPI.configGet(scope, 'sizeExpanded'); window.__sizeExpanded = Number((v && v.result) ? v.result : v) || 240; if (!v) { try { v = await window.lowbarAPI.configGet(altScope, 'sizeExpanded'); window.__sizeExpanded = Number((v && v.result) ? v.result : v) || window.__sizeExpanded; } catch (e) {} } } catch (e) { window.__sizeExpanded = 240; }
+        try { let v = await window.lowbarAPI.configGet(scope, 'centerSize'); window.__centerSize = Number((v && v.result) ? v.result : v) || 50; if (!v) { try { v = await window.lowbarAPI.configGet(altScope, 'centerSize'); window.__centerSize = Number((v && v.result) ? v.result : v) || window.__centerSize; } catch (e) {} } } catch (e) { window.__centerSize = 50; }
+        try { let v = await window.lowbarAPI.configGet(scope, 'centerIcon'); window.__centerIcon = String((v && v.result) ? v.result : v || 'ri-compass-3-line'); if (!v) { try { v = await window.lowbarAPI.configGet(altScope, 'centerIcon'); const vv = (v && v.result) ? v.result : v; window.__centerIcon = String(vv || window.__centerIcon || 'ri-compass-3-line'); } catch (e) {} } } catch (e) { window.__centerIcon = 'ri-compass-3-line'; }
         try {
           window.__centerSize = Math.max(32, Math.min(160, Number(window.__centerSize || 50)));
           window.__sizeCollapsed = Math.max(40, Math.min(240, Number(window.__sizeCollapsed || (window.__centerSize + 10))));
           window.__centerSize = Math.max(32, Math.min(160, Number(window.__sizeCollapsed - 10)));
           window.__sizeCollapsed = Math.max(40, Math.min(240, Number(window.__centerSize + 10)));
-        } catch {}
+        } catch (e) {}
       }
       function render(){ renderProjectList(); }
       function renderProjectList(){
@@ -165,7 +165,7 @@
             const ic = String(it.icon||'');
             if (ic.startsWith('ri-')) { iconEl = document.createElement('i'); iconEl.className = ic; }
             else { iconEl = document.createElement('img'); iconEl.src = ic; iconEl.style.width='18px'; iconEl.style.height='18px'; iconEl.style.objectFit='contain'; iconEl.style.borderRadius='4px'; }
-          } catch { iconEl = document.createElement('i'); iconEl.className='ri-circle-line'; }
+          } catch (e) { iconEl = document.createElement('i'); iconEl.className='ri-circle-line'; }
           const labelEl = document.createElement('span'); labelEl.textContent = String(it.label||''); labelEl.style.color='#e6f0ff';
           const typeBadge = document.createElement('span'); typeBadge.className='badge'; typeBadge.innerHTML = `<i class="ri-tools-line"></i> ${typeLabel(it.actionType)}`;
           left.appendChild(iconEl); left.appendChild(labelEl);
@@ -176,7 +176,7 @@
           const btnDel = document.createElement('button'); btnDel.className='del'; btnDel.textContent='删除';
           btnUp.onclick = () => { if (i>0){ const tmp = items[i-1]; items[i-1]=items[i]; items[i]=tmp; window.__selectedIndex = i-1; renderProjectList(); placePreview(); } };
           btnDown.onclick = () => { if (i<items.length-1){ const tmp = items[i+1]; items[i+1]=items[i]; items[i]=tmp; window.__selectedIndex = i+1; renderProjectList(); placePreview(); } };
-          btnEdit.onclick = async () => { try { await window.lowbarAPI.pluginCall('screen.compass','openItemEditor',[i]); } catch {} try { await window.lowbarAPI.pluginCall('screen.compass','broadcastButtons',[{ buttons: items, theme, sizeCollapsed: window.__sizeCollapsed, sizeExpanded: window.__sizeExpanded, centerSize: window.__centerSize, centerIcon: window.__centerIcon }]); } catch {} };
+          btnEdit.onclick = async () => { try { await window.lowbarAPI.pluginCall('screen.compass','openItemEditor',[i]); } catch (e) {} try { await window.lowbarAPI.pluginCall('screen.compass','broadcastButtons',[{ buttons: items, theme, sizeCollapsed: window.__sizeCollapsed, sizeExpanded: window.__sizeExpanded, centerSize: window.__centerSize, centerIcon: window.__centerIcon }]); } catch (e) {} };
           btnDel.onclick = () => { items.splice(i,1); if (typeof window.__selectedIndex!=='number' || window.__selectedIndex>=items.length) window.__selectedIndex = items.length-1; renderProjectList(); placePreview(); };
           row.appendChild(left); row.appendChild(btnUp); row.appendChild(btnDown); row.appendChild(btnEdit); row.appendChild(btnDel);
           row.onclick = () => { window.__selectedIndex = i; placePreview(); renderProjectList(); };
@@ -185,7 +185,7 @@
         });
         listWrap.appendChild(ul); root.appendChild(listWrap);
       }
-      document.getElementById('add').onclick = async () => { items.push({ id: 'btn_'+Date.now(), label:'新按钮', icon:'ri-focus-3-line', actionType:'cmd', actionPayload:{ cmd: '' } }); window.__selectedIndex = items.length - 1; renderProjectList(); placePreview(); try { await window.lowbarAPI.configSet(scope, 'buttons', items); } catch {} try { await window.lowbarAPI.configSet(altScope, 'buttons', items); } catch {} try { if (channelTopic) await window.lowbarAPI.emitEvent(channelTopic, { type: 'buttons.update', buttons: items }); } catch {} try { await window.lowbarAPI.pluginCall('screen.compass','broadcastButtons',[{ buttons: items }]); } catch {} };
+      document.getElementById('add').onclick = async () => { items.push({ id: 'btn_'+Date.now(), label:'新按钮', icon:'ri-focus-3-line', actionType:'cmd', actionPayload:{ cmd: '' } }); window.__selectedIndex = items.length - 1; renderProjectList(); placePreview(); try { await window.lowbarAPI.configSet(scope, 'buttons', items); } catch (e) {} try { await window.lowbarAPI.configSet(altScope, 'buttons', items); } catch (e) {} try { if (channelTopic) await window.lowbarAPI.emitEvent(channelTopic, { type: 'buttons.update', buttons: items }); } catch (e) {} try { await window.lowbarAPI.pluginCall('screen.compass','broadcastButtons',[{ buttons: items }]); } catch (e) {} };
       let theme = 'classic';
       function updateThemeSeg(){ try {
         const c = document.getElementById('themeClassicBtn');
@@ -198,7 +198,7 @@
         hr.classList.toggle('active', theme==='hright');
         const lp = document.getElementById('leftPane');
         if (lp) lp.style.display = (theme==='hleft' || theme==='hright') ? 'none' : 'flex';
-      } catch {} }
+      } catch (e) {} }
       document.getElementById('themeClassicBtn').onclick = () => { theme = 'classic'; updateThemeSeg(); placePreview(); };
       document.getElementById('themeSectorBtn').onclick = () => { theme = 'sector'; updateThemeSeg(); placePreview(); };
       document.getElementById('themeHLeftBtn').onclick = () => { theme = 'hleft'; updateThemeSeg(); placePreview(); };
@@ -222,20 +222,20 @@
             await window.lowbarAPI.configSet(altScope, 'sizeExpanded', window.__sizeExpanded);
             await window.lowbarAPI.configSet(altScope, 'centerSize', window.__centerSize);
             await window.lowbarAPI.configSet(altScope, 'centerIcon', window.__centerIcon);
-          } catch {}
-          try { if (channelTopic) await window.lowbarAPI.emitEvent(channelTopic, { type: 'buttons.update', buttons: items, theme, sizeCollapsed: window.__sizeCollapsed, sizeExpanded: window.__sizeExpanded, centerSize: window.__centerSize, centerIcon: window.__centerIcon }); } catch {}
-          try { await window.lowbarAPI.pluginCall('screen.compass','broadcastButtons',[{ buttons: items, theme, sizeCollapsed: window.__sizeCollapsed, sizeExpanded: window.__sizeExpanded, centerSize: window.__centerSize, centerIcon: window.__centerIcon }]); } catch {}
-        } catch {}
+          } catch (e) {}
+          try { if (channelTopic) await window.lowbarAPI.emitEvent(channelTopic, { type: 'buttons.update', buttons: items, theme, sizeCollapsed: window.__sizeCollapsed, sizeExpanded: window.__sizeExpanded, centerSize: window.__centerSize, centerIcon: window.__centerIcon }); } catch (e) {}
+          try { await window.lowbarAPI.pluginCall('screen.compass','broadcastButtons',[{ buttons: items, theme, sizeCollapsed: window.__sizeCollapsed, sizeExpanded: window.__sizeExpanded, centerSize: window.__centerSize, centerIcon: window.__centerIcon }]); } catch (e) {}
+        } catch (e) {}
       };
       function placePreview(){
-        try { const rootEl = document.getElementById('pvRoot'); const ring = document.getElementById('pvRing'); ring.innerHTML=''; const sectors = document.getElementById('pvSectors'); sectors.innerHTML=''; const hTray = document.getElementById('pvHTray'); hTray.innerHTML=''; } catch {}
+        try { const rootEl = document.getElementById('pvRoot'); const ring = document.getElementById('pvRing'); ring.innerHTML=''; const sectors = document.getElementById('pvSectors'); sectors.innerHTML=''; const hTray = document.getElementById('pvHTray'); hTray.innerHTML=''; } catch (e) {}
         const rootEl = document.getElementById('pvRoot'); const ring = document.getElementById('pvRing'); const sectors = document.getElementById('pvSectors'); const hTray = document.getElementById('pvHTray');
         const W = Math.max(200, Math.floor(rootEl.getBoundingClientRect().width || 240));
         const H = Math.max(200, Math.floor(rootEl.getBoundingClientRect().height || 240));
         const cx = Math.floor(W/2), cy = Math.floor(H/2);
         let R = Math.min(cx, cy) - 24; if (R < 22) R = 22;
         const N = items.length;
-        try { const pv = document.getElementById('preview'); pv.classList.toggle('classic', theme==='classic'); pv.classList.toggle('sector', theme==='sector'); } catch {}
+        try { const pv = document.getElementById('preview'); pv.classList.toggle('classic', theme==='classic'); pv.classList.toggle('sector', theme==='sector'); } catch (e) {}
         if (theme === 'sector' && N > 0) {
           const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
           svg.setAttribute('width','100%');
@@ -269,11 +269,11 @@
           sectors.appendChild(svg);
         }
         if (theme==='hleft' || theme==='hright'){
-          try { hTray.style.display='none'; } catch {}
-          try { document.getElementById('pvTopTrayWrap').style.display = 'block'; } catch {}
+          try { hTray.style.display='none'; } catch (e) {}
+          try { document.getElementById('pvTopTrayWrap').style.display = 'block'; } catch (e) {}
           const topTray = document.getElementById('pvTopTray');
           const topBg = document.getElementById('pvTopTrayBg');
-          try { topTray.style.display = 'flex'; } catch {}
+          try { topTray.style.display = 'flex'; } catch (e) {}
           const itemWidth = 56; const gap = 8; const pad = 16;
           const totalW = (N>0)? (N*itemWidth + Math.max(0,N-1)*gap + pad) : pad;
           const nearMargin = 18;
@@ -281,7 +281,7 @@
           const centerSize = Number(window.__centerSize || 50);
           const trayHeight = Math.max(Math.round(centerSize) + 8, 48);
           const bgHeight = Math.max(Math.round(centerSize) + 18, 56);
-          try { topBg.style.display = 'block'; } catch {}
+          try { topBg.style.display = 'block'; } catch (e) {}
           const wrap = document.getElementById('pvTopTrayWrap');
           const Wwrap = Math.max(200, Math.floor(wrap.getBoundingClientRect().width || 240));
           const bgPadH = 8;
@@ -303,15 +303,15 @@
             const trayLeftBase = 74;
             trayLeft = trayLeftBase + trayShift;
           }
-          try { topBg.style.left = bgLeft + 'px'; topBg.style.right = 'auto'; } catch {}
-          try { topBg.style.width = bgWidth + 'px'; } catch {}
-          try { topBg.style.height = bgHeight + 'px'; topBg.style.borderRadius = Math.round(bgHeight/2) + 'px'; } catch {}
+          try { topBg.style.left = bgLeft + 'px'; topBg.style.right = 'auto'; } catch (e) {}
+          try { topBg.style.width = bgWidth + 'px'; } catch (e) {}
+          try { topBg.style.height = bgHeight + 'px'; topBg.style.borderRadius = Math.round(bgHeight/2) + 'px'; } catch (e) {}
           const trayTop = Math.max(0, Math.round((bgHeight - trayHeight) / 2));
-          try { topTray.style.height = trayHeight + 'px'; topTray.style.marginTop = trayTop + 'px'; } catch {}
-          try { topTray.style.width = totalW + 'px'; } catch {}
+          try { topTray.style.height = trayHeight + 'px'; topTray.style.marginTop = trayTop + 'px'; } catch (e) {}
+          try { topTray.style.width = totalW + 'px'; } catch (e) {}
           const justify = (theme==='hleft') ? 'flex-end' : 'flex-start';
-          try { topTray.style.justifyContent = justify; } catch {}
-          try { topTray.style.position = 'relative'; topTray.style.left = trayLeft + 'px'; } catch {}
+          try { topTray.style.justifyContent = justify; } catch (e) {}
+          try { topTray.style.position = 'relative'; topTray.style.left = trayLeft + 'px'; } catch (e) {}
           topTray.innerHTML = '';
           for(let i=0;i<N;i++){
             const it=items[i];
@@ -328,7 +328,7 @@
             topTray.appendChild(div);
           }
         } else {
-          try { document.getElementById('pvTopTrayWrap').style.display = 'none'; } catch {}
+          try { document.getElementById('pvTopTrayWrap').style.display = 'none'; } catch (e) {}
         for (let i=0;i<N;i++){
           const it = items[i];
           const centerR = 25;
@@ -395,8 +395,8 @@
             img.style.objectFit = 'contain';
             img.style.borderRadius = '4px';
           }
-        } catch {}
-        try { center.onclick = () => {}; } catch {}
+        } catch (e) {}
+        try { center.onclick = () => {}; } catch (e) {}
       }
       function renderActionFields(it, box){
         box.innerHTML = '';
@@ -449,7 +449,7 @@
           const updateEvents = async () => {
             evtSel.innerHTML = ''; const emptyEvt2=document.createElement('option'); emptyEvt2.value=''; emptyEvt2.textContent='选择事件'; evtSel.appendChild(emptyEvt2);
             const pid = pidSel.value.trim();
-            try { const res = await window.lowbarAPI.pluginCall('screen.compass','listAutomationEvents',[pid]); const payload = (res && res.result) ? res.result : res; const events = Array.isArray(payload)? payload : []; events.forEach(e=>{ const opt=document.createElement('option'); opt.value=e.id || e.name; opt.textContent=e.name || e.id; evtSel.appendChild(opt); }); } catch {}
+            try { const res = await window.lowbarAPI.pluginCall('screen.compass','listAutomationEvents',[pid]); const payload = (res && res.result) ? res.result : res; const events = Array.isArray(payload)? payload : []; events.forEach(e=>{ const opt=document.createElement('option'); opt.value=e.id || e.name; opt.textContent=e.name || e.id; evtSel.appendChild(opt); }); } catch (e) {}
             const currentEvt = (it.actionPayload && it.actionPayload.event) || '';
             if (currentEvt && !Array.from(evtSel.options).some(o=>o.value===currentEvt)){
               const opt=document.createElement('option'); opt.value=currentEvt; opt.textContent=currentEvt+' (自定义)'; evtSel.appendChild(opt);
@@ -492,11 +492,11 @@
         const close = document.createElement('div'); close.style.textAlign='right'; close.innerHTML='<button class="btn"><i class="ri-close-line"></i><span>关闭</span></button>';
         const grid = document.createElement('div'); grid.style.display='grid'; grid.style.gridTemplateColumns='repeat(auto-fill, 120px)'; grid.style.gap='8px';
         const allIcons = Array.from(new Set([...(pluginIcons||[]), ...remixShort]));
-        allIcons.forEach(ic => { const cell=document.createElement('div'); cell.style.display='flex'; cell.style.alignItems='center'; cell.style.gap='8px'; cell.style.cursor='pointer'; cell.style.padding='6px'; cell.style.border='1px solid rgba(255,255,255,0.12)'; cell.style.borderRadius='6px'; cell.innerHTML = `<i class="${ic}"></i><span style="color:#e6f0ff;font-size:12px;">${ic}</span>`; cell.onclick=()=>{ try { targetInput.value = ic; targetInput.dispatchEvent(new Event('change')); } catch {} document.body.removeChild(overlay); }; grid.appendChild(cell); });
+        allIcons.forEach(ic => { const cell=document.createElement('div'); cell.style.display='flex'; cell.style.alignItems='center'; cell.style.gap='8px'; cell.style.cursor='pointer'; cell.style.padding='6px'; cell.style.border='1px solid rgba(255,255,255,0.12)'; cell.style.borderRadius='6px'; cell.innerHTML = `<i class="${ic}"></i><span style="color:#e6f0ff;font-size:12px;">${ic}</span>`; cell.onclick=()=>{ try { targetInput.value = ic; targetInput.dispatchEvent(new Event('change')); } catch (e) {} document.body.removeChild(overlay); }; grid.appendChild(cell); });
         panel.appendChild(close); panel.appendChild(grid);
         overlay.appendChild(panel);
         document.body.appendChild(overlay);
-        close.onclick = () => { try { document.body.removeChild(overlay); } catch {} };
+        close.onclick = () => { try { document.body.removeChild(overlay); } catch (e) {} };
       }
 
       (async function init(){
@@ -531,23 +531,23 @@
             placePreview();
           };
           ci.onchange = () => { window.__centerIcon = String(ci.value || 'ri-compass-3-line'); placePreview(); };
-        } catch {}
+        } catch (e) {}
         try {
           let list = [];
           try {
             const res = await window.lowbarAPI.pluginCall('screen.compass','listPlugins',[]);
             list = (res && res.result) ? res.result : res;
-          } catch {}
+          } catch (e) {}
           if (!Array.isArray(list) || !list.length) {
-            try { const p = await window.lowbarAPI.getPlugins?.(); list = (p && p.result) ? p.result : p; } catch {}
+            try { const p = await window.lowbarAPI.getPlugins?.(); list = (p && p.result) ? p.result : p; } catch (e) {}
           }
           plugins = Array.isArray(list) ? list : [];
           pluginMap = {};
           plugins.forEach(p => { pluginMap[p.id] = p; });
           pluginIcons = plugins.map(p => String(p.icon || '').trim()).filter(Boolean);
-        } catch { pluginIcons = []; plugins = []; pluginMap = {}; }
+        } catch (e) { pluginIcons = []; plugins = []; pluginMap = {}; }
         render(); placePreview();
-        try { const t = await window.lowbarAPI.configGet(scope, 'theme'); const v = (t && t.result) ? t.result : t; theme = ['classic','sector','hleft','hright'].includes(v)?v:'classic'; updateThemeSeg(); } catch { theme='classic'; updateThemeSeg(); }
+        try { const t = await window.lowbarAPI.configGet(scope, 'theme'); const v = (t && t.result) ? t.result : t; theme = ['classic','sector','hleft','hright'].includes(v)?v:'classic'; updateThemeSeg(); } catch (e) { theme='classic'; updateThemeSeg(); }
         placePreview();
         switchPage('project');
         try {
@@ -576,11 +576,11 @@
                   updateThemeSeg();
                   renderProjectList();
                   placePreview();
-                } catch {}
+                } catch (e) {}
               }
             });
           }
-        } catch {}
+        } catch (e) {}
       })();
       function switchPage(id){
         try {
@@ -588,7 +588,7 @@
           document.getElementById('paneTheme').style.display = (id==='theme')? 'block' : 'none';
           render();
           placePreview();
-        } catch {}
+        } catch (e) {}
       }
     </script>
   </body>

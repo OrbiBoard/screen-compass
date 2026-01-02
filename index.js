@@ -2,6 +2,12 @@ const path = require('path');
 const url = require('url');
 const { BrowserWindow, app, screen, nativeImage, shell } = require('electron');
 
+let __dragLogs = [];
+function addDragLog(msg) {
+  if (__dragLogs.length > 500) __dragLogs.shift();
+  __dragLogs.push(`[${new Date().toLocaleTimeString()}.${String(Date.now()%1000).padStart(3,'0')}] ${msg}`);
+}
+
 let __dragTracker = { timer: null };
 function startDragTracking() {
   try {
@@ -12,31 +18,31 @@ function startDragTracking() {
         const nx = Math.floor(pt.x - state.dragOffsetX);
         const ny = Math.floor(pt.y - state.dragOffsetY);
         functions.moveTo(nx, ny);
-      } catch {}
+      } catch (e) {}
     }, 16);
-  } catch {}
+  } catch (e) {}
 }
 function stopDragTracking() {
-  try { if (__dragTracker.timer) clearInterval(__dragTracker.timer); __dragTracker.timer = null; } catch {}
+  try { if (__dragTracker.timer) clearInterval(__dragTracker.timer); __dragTracker.timer = null; } catch (e) {}
 }
 function lockWindowSize(w, h) {
   try {
     if (!compassWin || compassWin.isDestroyed()) return;
     const W = Math.max(1, Math.floor(Number(w || 0)));
     const H = Math.max(1, Math.floor(Number(h || 0)));
-    try { compassWin.setResizable(false); } catch {}
-    try { compassWin.setMinimumSize(W, H); } catch {}
-    try { compassWin.setMaximumSize(W, H); } catch {}
-    try { compassWin.setContentSize(W, H); } catch {}
-  } catch {}
+    try { compassWin.setResizable(false); } catch (e) {}
+    try { compassWin.setMinimumSize(W, H); } catch (e) {}
+    try { compassWin.setMaximumSize(W, H); } catch (e) {}
+    try { compassWin.setContentSize(W, H); } catch (e) {}
+  } catch (e) {}
 }
 function unlockWindowSize() {
   try {
     if (!compassWin || compassWin.isDestroyed()) return;
-    try { compassWin.setResizable(true); } catch {}
-    try { compassWin.setMinimumSize(1, 1); } catch {}
-    try { compassWin.setMaximumSize(9999, 9999); } catch {}
-  } catch {}
+    try { compassWin.setResizable(true); } catch (e) {}
+    try { compassWin.setMinimumSize(1, 1); } catch (e) {}
+    try { compassWin.setMaximumSize(9999, 9999); } catch (e) {}
+  } catch (e) {}
 }
 
 function resolveShortcutTarget(p) {
@@ -49,7 +55,7 @@ function resolveShortcutTarget(p) {
       return target || '';
     }
     return '';
-  } catch { return '';
+  } catch (e) { return '';
   }
 }
 
@@ -65,7 +71,7 @@ async function buildAppsCache() {
     const seen = new Set();
     const isExe = (p) => String(p||'').toLowerCase().endsWith('.exe');
     const isLnk = (p) => String(p||'').toLowerCase().endsWith('.lnk');
-    const pushApp = (p) => { try { const key = String(p||'').toLowerCase(); if (!key) return; if (seen.has(key)) return; seen.add(key); const nm = path.basename(p, path.extname(p)); out.push({ name: nm, path: p }); } catch {} };
+    const pushApp = (p) => { try { const key = String(p||'').toLowerCase(); if (!key) return; if (seen.has(key)) return; seen.add(key); const nm = path.basename(p, path.extname(p)); out.push({ name: nm, path: p }); } catch (e) {} };
     const walk = async (dir, depth) => {
       try {
         const ents = await fsp.readdir(dir, { withFileTypes: true });
@@ -74,12 +80,12 @@ async function buildAppsCache() {
           if (d.isFile() && (isExe(p1) || isLnk(p1))) { pushApp(p1); continue; }
           if (d.isDirectory() && depth < 2) { await walk(p1, depth + 1); }
         }
-      } catch {}
+      } catch (e) {}
     };
     for (const r of roots) { await walk(r, 0); }
     __appsCache.list = out.slice(0, 800);
     __appsCache.ts = Date.now();
-  } catch { __appsCache.list = []; __appsCache.ts = Date.now(); }
+  } catch (e) { __appsCache.list = []; __appsCache.ts = Date.now(); }
 }
 const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
@@ -88,7 +94,7 @@ const fsp = fs.promises;
 let pluginApi = null;
 let compassWin = null;
 let appWin = null;
-function emitUpdate(target, value){ try { pluginApi.emit(state.eventChannel, { type: 'update', target, value }); } catch {} }
+function emitUpdate(target, value){ try { pluginApi.emit(state.eventChannel, { type: 'update', target, value }); } catch (e) {} }
 
 const state = {
   eventChannel: 'screen.compass.channel',
@@ -102,7 +108,8 @@ const state = {
   lockWidth: 0,
   lockHeight: 0,
   sizing: false,
-  mode: 'collapsed'
+  mode: 'collapsed',
+  touchLogLastTs: 0
 };
 
 function createCompassWindow() {
@@ -140,16 +147,16 @@ function createCompassWindow() {
       }
     });
     compassWin.loadFile(path.join(__dirname, 'float', 'compass.html'));
-    try { compassWin.on('will-resize', (e) => { try { e.preventDefault(); } catch {} }); } catch {}
-    try { const bInit = compassWin.getBounds(); lockWindowSize(bInit.width, bInit.height); } catch {}
-    try { const b0 = compassWin.getBounds(); state.lockWidth = b0.width; state.lockHeight = b0.height; } catch {}
-    try { compassWin.on('resize', () => { try { const b = compassWin.getBounds(); if (state.lockWidth && state.lockHeight && (b.width !== state.lockWidth || b.height !== state.lockHeight)) { compassWin.setBounds({ x: b.x, y: b.y, width: state.lockWidth, height: state.lockHeight }); } } catch {} }); } catch {}
-    try { compassWin.setAlwaysOnTop(true); } catch {}
-    try { compassWin.setAlwaysOnTop(true, 'screen-saver'); } catch {}
-    try { if (isLinux) compassWin.setAlwaysOnTop(true, 'pop-up-menu'); } catch {}
-    try { if (isLinux) compassWin.setAlwaysOnTop(true, 'status'); } catch {}
-    try { compassWin.setVisibleOnAllWorkspaces(true); } catch {}
-    try { compassWin.setSkipTaskbar(true); } catch {}
+    try { compassWin.on('will-resize', (e) => { try { e.preventDefault(); } catch (e) {} }); } catch (e) {}
+    try { const bInit = compassWin.getBounds(); lockWindowSize(bInit.width, bInit.height); } catch (e) {}
+    try { const b0 = compassWin.getBounds(); state.lockWidth = b0.width; state.lockHeight = b0.height; } catch (e) {}
+    try { compassWin.on('resize', () => { try { const b = compassWin.getBounds(); if (state.lockWidth && state.lockHeight && (b.width !== state.lockWidth || b.height !== state.lockHeight)) { compassWin.setBounds({ x: b.x, y: b.y, width: state.lockWidth, height: state.lockHeight }); } } catch (e) {} }); } catch (e) {}
+    try { compassWin.setAlwaysOnTop(true); } catch (e) {}
+    try { compassWin.setAlwaysOnTop(true, 'screen-saver'); } catch (e) {}
+    try { if (isLinux) compassWin.setAlwaysOnTop(true, 'pop-up-menu'); } catch (e) {}
+    try { if (isLinux) compassWin.setAlwaysOnTop(true, 'status'); } catch (e) {}
+    try { compassWin.setVisibleOnAllWorkspaces(true); } catch (e) {}
+    try { compassWin.setSkipTaskbar(true); } catch (e) {}
     compassWin.on('closed', () => { compassWin = null; });
     let snapTimer = null;
     const snap = () => {
@@ -165,13 +172,13 @@ function createCompassWindow() {
         if (Math.abs(wb.y - sb.y) <= th) y = sb.y;
         if (Math.abs((wb.y + wb.height) - (sb.y + sb.height)) <= th) y = sb.y + sb.height - wb.height;
         if (x !== wb.x || y !== wb.y) compassWin.setPosition(x, y);
-      } catch {}
+      } catch (e) {}
     };
-    const scheduleSnap = () => { try { if (state.dragging) return; if (state.sizing) return; if (snapTimer) clearTimeout(snapTimer); snapTimer = setTimeout(snap, 120); } catch {} };
-    try { compassWin.on('move', scheduleSnap); } catch {}
-    try { compassWin.on('moved', scheduleSnap); } catch {}
+    const scheduleSnap = () => { try { if (state.dragging) return; if (state.sizing) return; if (snapTimer) clearTimeout(snapTimer); snapTimer = setTimeout(snap, 120); } catch (e) {} };
+    try { compassWin.on('move', scheduleSnap); } catch (e) {}
+    try { compassWin.on('moved', scheduleSnap); } catch (e) {}
     return compassWin;
-  } catch { return null; }
+  } catch (e) { return null; }
 }
 
 const functions = {
@@ -221,7 +228,7 @@ const functions = {
           }
         });
         win.loadFile(path.join(__dirname, 'background', 'settings.html'));
-      } catch {}
+      } catch (e) {}
       return true;
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
   },
@@ -233,8 +240,17 @@ const functions = {
       const sy = Math.floor(Number(ay||0));
       const nx = Math.floor(sx - state.dragOffsetX);
       const ny = Math.floor(sy - state.dragOffsetY);
+      try {
+        const wb = compassWin.getBounds();
+        const jump = Math.abs(nx - wb.x) + Math.abs(ny - wb.y);
+        if (jump > 300) { addDragLog(`touchAbs: ignore jump input(${sx},${sy}) win(${nx},${ny})`); return true; }
+      } catch (e) {}
+      try {
+        const now = Date.now();
+        if (now - state.touchLogLastTs >= 120) { pluginApi?.log?.(`screen-compass drag touchAbs input=${ax},${ay} offset=${state.dragOffsetX},${state.dragOffsetY} win=${nx},${ny}`); state.touchLogLastTs = now; }
+      } catch (e) {}
       return functions.moveTo(nx, ny);
-    } catch { return false; }
+    } catch (e) { return false; }
   },
   onLowbarEvent: async (payload = {}) => {
     try {
@@ -321,7 +337,7 @@ const functions = {
         if (!p) return false;
         try {
           if (p.toLowerCase().endsWith('.lnk')) {
-            try { await shell.openPath(p); return true; } catch {}
+            try { await shell.openPath(p); return true; } catch (e) {}
           }
           const child = spawn(p, args, { detached: true, stdio: 'ignore' }); child.unref(); return true;
         } catch (e) { return { ok: false, error: e?.message || String(e) }; }
@@ -336,7 +352,7 @@ const functions = {
           } else {
             const sh = spawn('bash', ['-lc', cmd], { detached: true, stdio: 'ignore' });
             sh.on('error', () => {
-              try { const sh2 = spawn('sh', ['-c', cmd], { detached: true, stdio: 'ignore' }); sh2.unref(); } catch {}
+              try { const sh2 = spawn('sh', ['-c', cmd], { detached: true, stdio: 'ignore' }); sh2.unref(); } catch (e) {}
             });
             sh.unref();
           }
@@ -353,7 +369,7 @@ const functions = {
             const child = spawn('cmd', ['/c', cmd], { windowsHide: true, detached: true, stdio: 'ignore' }); child.unref();
           } else {
             const sh = spawn('bash', ['-lc', cmd], { detached: true, stdio: 'ignore' });
-            sh.on('error', () => { try { const sh2 = spawn('sh', ['-c', cmd], { detached: true, stdio: 'ignore' }); sh2.unref(); } catch {} });
+            sh.on('error', () => { try { const sh2 = spawn('sh', ['-c', cmd], { detached: true, stdio: 'ignore' }); sh2.unref(); } catch (e) {} });
             sh.unref();
           }
           return true;
@@ -376,7 +392,7 @@ const functions = {
             else if (op === 'logoff') c = 'loginctl terminate-user "$USER"';
             if (!c) return false;
             const sh = spawn('bash', ['-lc', c], { detached: true, stdio: 'ignore' });
-            sh.on('error', () => { try { const sh2 = spawn('sh', ['-c', c], { detached: true, stdio: 'ignore' }); sh2.unref(); } catch {} });
+            sh.on('error', () => { try { const sh2 = spawn('sh', ['-c', c], { detached: true, stdio: 'ignore' }); sh2.unref(); } catch (e) {} });
             sh.unref();
           }
           return true;
@@ -416,34 +432,34 @@ const functions = {
       const seen = new Set();
       const isExe = (p) => String(p||'').toLowerCase().endsWith('.exe');
       const isLnk = (p) => String(p||'').toLowerCase().endsWith('.lnk');
-      const pushApp = (p) => { try { const key = String(p||'').toLowerCase(); if (!key) return; if (seen.has(key)) return; seen.add(key); const nm = path.basename(p, path.extname(p)); out.push({ name: nm, path: p }); } catch {} };
+      const pushApp = (p) => { try { const key = String(p||'').toLowerCase(); if (!key) return; if (seen.has(key)) return; seen.add(key); const nm = path.basename(p, path.extname(p)); out.push({ name: nm, path: p }); } catch (e) {} };
       roots.forEach((root) => {
         try {
           const dirs = fs.readdirSync(root, { withFileTypes: true });
           dirs.forEach((d) => {
             const p1 = path.join(root, d.name);
-            try { if (d.isFile() && (isExe(p1) || isLnk(p1))) { pushApp(p1); return; } } catch {}
+            try { if (d.isFile() && (isExe(p1) || isLnk(p1))) { pushApp(p1); return; } } catch (e) {}
             if (d.isDirectory()) {
               try {
                 const files = fs.readdirSync(p1, { withFileTypes: true });
-                files.forEach((f) => { try { const p2 = path.join(p1, f.name); if (f.isFile() && (isExe(p2) || isLnk(p2))) pushApp(p2); } catch {} });
-              } catch {}
+                files.forEach((f) => { try { const p2 = path.join(p1, f.name); if (f.isFile() && (isExe(p2) || isLnk(p2))) pushApp(p2); } catch (e) {} });
+              } catch (e) {}
             }
           });
-        } catch {}
+        } catch (e) {}
       });
       return out.slice(0, 120);
-    } catch { return []; }
+    } catch (e) { return []; }
   },
   getFileIconDataUrl: async (p) => {
     try {
       const fp = String(p||''); if (!fp) return '';
       let usePath = fp;
-      try { const target = resolveShortcutTarget(fp); if (target) usePath = target; } catch {}
+      try { const target = resolveShortcutTarget(fp); if (target) usePath = target; } catch (e) {}
       const img = await app.getFileIcon(usePath, { size: 'normal' });
       if (!img || img.isEmpty()) return '';
       return img.toDataURL();
-    } catch { return ''; }
+    } catch (e) { return ''; }
   },
   setExpandedWindow: (on, wOpt, hOpt) => {
     try {
@@ -466,12 +482,12 @@ const functions = {
       if (ny < sb.y) ny = sb.y;
       if (nx + size.width > sb.x + sb.width) nx = sb.x + sb.width - size.width;
       if (ny + size.height > sb.y + sb.height) ny = sb.y + sb.height - size.height;
-      try { unlockWindowSize(); } catch {}
-      try { compassWin.setContentSize(size.width, size.height); } catch {}
-      try { compassWin.setBounds({ x: nx, y: ny, width: size.width, height: size.height }); } catch {}
-      try { lockWindowSize(size.width, size.height); } catch {}
-      try { state.lockWidth = size.width; state.lockHeight = size.height; } catch {}
-      try { setTimeout(() => { state.sizing = false; }, 60); } catch {}
+      try { unlockWindowSize(); } catch (e) {}
+      try { compassWin.setContentSize(size.width, size.height); } catch (e) {}
+      try { compassWin.setBounds({ x: nx, y: ny, width: size.width, height: size.height }); } catch (e) {}
+      try { lockWindowSize(size.width, size.height); } catch (e) {}
+      try { state.lockWidth = size.width; state.lockHeight = size.height; } catch (e) {}
+      try { setTimeout(() => { state.sizing = false; }, 60); } catch (e) {}
       try {
         if (appWin && !appWin.isDestroyed()) {
           const awb = appWin.getBounds();
@@ -483,11 +499,11 @@ const functions = {
           if (ay < sb2.y) ay = sb2.y;
           if (ax + awb.width > sb2.x + sb2.width) ax = sb2.x + sb2.width - awb.width;
           if (ay + awb.height > sb2.y + sb2.height) ay = sb2.y + sb2.height - awb.height;
-          try { appWin.setBounds({ x: Math.floor(ax), y: Math.floor(ay), width: awb.width, height: awb.height }); } catch {}
+          try { appWin.setBounds({ x: Math.floor(ax), y: Math.floor(ay), width: awb.width, height: awb.height }); } catch (e) {}
         }
-      } catch {}
+      } catch (e) {}
       return true;
-    } catch { return false; }
+    } catch (e) { return false; }
   },
   openApplicationsWindow: () => {
     try {
@@ -509,12 +525,12 @@ const functions = {
             if (ny + useH > sb.y + sb.height) ny = sb.y + sb.height - useH;
             return { x: nx, y: ny, width: useW, height: useH };
           }
-        } catch {}
+        } catch (e) {}
         const d = screen.getPrimaryDisplay();
         const b = d.bounds;
         return { x: b.x + Math.floor((b.width - useW) / 2), y: b.y + Math.floor((b.height - useH) / 2), width: useW, height: useH };
       };
-      if (appWin && !appWin.isDestroyed()) { try { appWin.show(); appWin.focus(); } catch {} return true; }
+      if (appWin && !appWin.isDestroyed()) { try { appWin.show(); appWin.focus(); } catch (e) {} return true; }
       const pos = computePos();
       const isLinux = process.platform === 'linux';
       appWin = new BrowserWindow({
@@ -544,18 +560,18 @@ const functions = {
         }
       });
       appWin.loadFile(path.join(__dirname, 'background', 'app-window.html'));
-      try { appWin.on('closed', () => { appWin = null; }); } catch {}
-      try { pluginApi.emit(state.eventChannel, { type: 'app.active', active: true }); } catch {}
+      try { appWin.on('closed', () => { appWin = null; }); } catch (e) {}
+      try { pluginApi.emit(state.eventChannel, { type: 'app.active', active: true }); } catch (e) {}
       return true;
-    } catch { return false; }
+    } catch (e) { return false; }
   },
   closeApplicationsWindow: () => {
     try {
       const had = !!(appWin && !appWin.isDestroyed());
-      if (had) { try { appWin.close(); } catch {} appWin = null; }
-      try { pluginApi.emit(state.eventChannel, { type: 'app.active', active: false }); } catch {}
+      if (had) { try { appWin.close(); } catch (e) {} appWin = null; }
+      try { pluginApi.emit(state.eventChannel, { type: 'app.active', active: false }); } catch (e) {}
       return had;
-    } catch { return false; }
+    } catch (e) { return false; }
   },
   openMainProgram: async () => {
     try {
@@ -571,8 +587,8 @@ const functions = {
       if (state.dragging) {
         if (compassWin && !compassWin.isDestroyed()) {
           const wb = compassWin.getBounds();
-          try { lockWindowSize(wb.width, wb.height); } catch {}
-          try { state.lockWidth = wb.width; state.lockHeight = wb.height; } catch {}
+          try { lockWindowSize(wb.width, wb.height); } catch (e) {}
+          try { state.lockWidth = wb.width; state.lockHeight = wb.height; } catch (e) {}
           state.dragStartWinX = wb.x;
           state.dragStartWinY = wb.y;
           const cx = wb.x + Math.floor(wb.width / 2);
@@ -585,24 +601,28 @@ const functions = {
             const useY = (typeof offsetY === 'number') ? offsetY : Math.max(0, pt.y - wb.y);
             state.dragOffsetX = useX;
             state.dragOffsetY = useY;
-          } catch { state.dragOffsetX = 0; state.dragOffsetY = 0; }
+            addDragLog(`setDragging: START win(${wb.x},${wb.y}) pt(${pt.x},${pt.y}) offset(${useX},${useY}) type(${inputType})`);
+            try { pluginApi?.log?.(`screen-compass drag start win=${wb.x},${wb.y},${wb.width},${wb.height} cursor=${pt.x},${pt.y} offset=${useX},${useY} type=${inputType}`); } catch (e) {}
+          } catch (e) { state.dragOffsetX = 0; state.dragOffsetY = 0; }
           state.dragInputType = (String(inputType||'').toLowerCase()==='touch') ? 'touch' : 'mouse';
           if (state.dragInputType === 'mouse') {
-            try { startDragTracking(); } catch {}
+            try { startDragTracking(); } catch (e) {}
           } else {
-            try { stopDragTracking(); } catch {}
+            try { stopDragTracking(); } catch (e) {}
           }
         } else {
           state.draggingDisplayId = null;
         }
       } else {
+        addDragLog(`setDragging: STOP`);
+        try { pluginApi?.log?.(`screen-compass drag stop`); } catch (e) {}
         state.draggingDisplayId = null;
         state.dragInputType = 'mouse';
-        try { stopDragTracking(); } catch {}
-        try { const b = compassWin && !compassWin.isDestroyed() ? compassWin.getBounds() : null; if (b) { lockWindowSize(b.width, b.height); state.lockWidth = b.width; state.lockHeight = b.height; } } catch {}
+        try { stopDragTracking(); } catch (e) {}
+        try { const b = compassWin && !compassWin.isDestroyed() ? compassWin.getBounds() : null; if (b) { lockWindowSize(b.width, b.height); state.lockWidth = b.width; state.lockHeight = b.height; } } catch (e) {}
       }
       return true;
-    } catch { return false; }
+    } catch (e) { return false; }
   },
   touchDragMove: (dx, dy) => {
     try {
@@ -610,10 +630,14 @@ const functions = {
       if (!state.dragging || state.dragInputType !== 'touch') return false;
       const nx = Math.floor(state.dragStartWinX + Number(dx||0));
       const ny = Math.floor(state.dragStartWinY + Number(dy||0));
+      addDragLog(`touchDragMove: delta(${dx},${dy}) -> win(${nx},${ny})`);
+      try { pluginApi?.log?.(`screen-compass drag touch delta=${dx},${dy} win=${nx},${ny}`); } catch (e) {}
       return functions.moveTo(nx, ny);
-    } catch { return false; }
+    } catch (e) { return false; }
   },
-  getBounds: () => { try { if (!compassWin || compassWin.isDestroyed()) return null; return compassWin.getBounds(); } catch { return null; } },
+  getDragLogs: () => { return __dragLogs; },
+  clearDragLogs: () => { __dragLogs = []; return true; },
+  getBounds: () => { try { if (!compassWin || compassWin.isDestroyed()) return null; return compassWin.getBounds(); } catch (e) { return null; } },
   moveTo: (x, y) => {
     try {
       if (!compassWin || compassWin.isDestroyed()) return false;
@@ -634,6 +658,16 @@ const functions = {
       const ny = Math.max(sb.y, Math.min(y, sb.y + sb.height - (state.lockHeight || wb.height)));
       const W = state.lockWidth || wb.width;
       const H = state.lockHeight || wb.height;
+      if (state.dragging) {
+        addDragLog(`moveTo: req(${x},${y}) -> clip(${nx},${ny}) size(${W},${H}) input(${state.dragInputType}) offset(${state.dragOffsetX},${state.dragOffsetY}) display(${sb.x},${sb.y},${sb.width},${sb.height})`);
+        try {
+          const now = Date.now();
+          if (state.dragInputType !== 'touch' || now - state.touchLogLastTs >= 120) {
+            pluginApi?.log?.(`screen-compass drag move req=${x},${y} clip=${nx},${ny} size=${W},${H} type=${state.dragInputType} offset=${state.dragOffsetX},${state.dragOffsetY} display=${sb.x},${sb.y},${sb.width},${sb.height}`);
+            if (state.dragInputType === 'touch') state.touchLogLastTs = now;
+          }
+        } catch (e) {}
+      }
       compassWin.setBounds({ x: Math.floor(nx), y: Math.floor(ny), width: W, height: H });
       try {
         if (appWin && !appWin.isDestroyed()) {
@@ -646,9 +680,17 @@ const functions = {
           if (ay + awb.height > sb.y + sb.height) ay = sb.y + sb.height - awb.height;
           appWin.setBounds({ x: Math.floor(ax), y: Math.floor(ay), width: awb.width, height: awb.height });
         }
-      } catch {}
+      } catch (e) {}
       return true;
-    } catch { return false; }
+    } catch (e) { return false; }
+  },
+  logSnapshot: () => {
+    try {
+      const b = compassWin && !compassWin.isDestroyed() ? compassWin.getBounds() : null;
+      const pt = screen.getCursorScreenPoint ? screen.getCursorScreenPoint() : { x: 0, y: 0 };
+      addDragLog(`snapshot: dragging(${state.dragging}) type(${state.dragInputType}) win(${b?`${b.x},${b.y},${b.width},${b.height}`:'null'}) cursor(${pt.x},${pt.y}) offset(${state.dragOffsetX},${state.dragOffsetY}) lock(${state.lockWidth},${state.lockHeight}) mode(${state.mode})`);
+      return true;
+    } catch (e) { return false; }
   },
   snap: () => {
     try {
@@ -684,16 +726,31 @@ const functions = {
           if (ay + awb.height > b.y + b.height) ay = b.y + b.height - awb.height;
           appWin.setBounds({ x: Math.floor(ax), y: Math.floor(ay), width: awb.width, height: awb.height });
         }
-      } catch {}
+      } catch (e) {}
       return true;
-    } catch { return false; }
+    } catch (e) { return false; }
   }
 };
 
 const init = async (api) => {
   pluginApi = api;
+  try {
+    if (!pluginApi.logWrite) {
+      pluginApi.logWrite = (level, ...args) => {
+        try {
+          const lv = String(level || 'info').toLowerCase();
+          if (lv === 'error') console.error(...args);
+          else if (lv === 'warn') console.warn(...args);
+          else console.info(...args);
+        } catch (e) {}
+      };
+    }
+    if (!pluginApi.log) {
+      pluginApi.log = (msg) => { try { pluginApi.logWrite('info', String(msg||'')); } catch (e) {} };
+    }
+  } catch (e) {}
   const ready = () => { createCompassWindow(); };
   if (app.isReady()) ready(); else app.once('ready', ready);
 };
 
-module.exports = { name: '屏幕罗盘', version: '0.1.0', init, functions };
+module.exports = { name: '屏幕罗盘', version: '0.1.2', init, functions };
