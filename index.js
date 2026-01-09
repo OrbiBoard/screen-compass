@@ -97,7 +97,7 @@ let appWin = null;
 function emitUpdate(target, value){ try { pluginApi.emit(state.eventChannel, { type: 'update', target, value }); } catch (e) {} }
 
 const state = {
-  eventChannel: 'screen.compass.channel',
+  eventChannel: 'screen-compass-channel',
   dragging: false,
   draggingDisplayId: null,
   dragOffsetX: 0,
@@ -186,14 +186,14 @@ const functions = {
   openCompassSettings: async () => {
     try {
       const bgFile = path.join(__dirname, 'background', 'settings.html');
-      const backgroundUrl = url.pathToFileURL(bgFile).href + `?channel=${encodeURIComponent(state.eventChannel)}&caller=${encodeURIComponent('screen.compass')}`;
+      const backgroundUrl = url.pathToFileURL(bgFile).href + `?channel=${encodeURIComponent(state.eventChannel)}&caller=${encodeURIComponent('screen-compass')}`;
       const params = {
         title: '屏幕罗盘设置',
         eventChannel: state.eventChannel,
         subscribeTopics: [state.eventChannel],
-        callerPluginId: 'screen.compass',
+        callerPluginId: 'screen-compass',
         unique: true,
-        id: 'screen.compass.settings',
+        id: 'screen-compass-settings',
         backgroundUrl,
         floatingUrl: null,
         centerItems: [
@@ -205,7 +205,7 @@ const functions = {
           { id: 'add', text: '新增按钮', icon: 'ri-add-line' }
         ]
       };
-      const res = await pluginApi.call('ui.lowbar', 'openTemplate', [params]);
+      const res = await pluginApi.call('ui-lowbar', 'openTemplate', [params]);
       if (res && res.ok) return true;
       // fallback: open direct BrowserWindow with lowbar preload
       try {
@@ -279,7 +279,7 @@ const functions = {
   openItemEditor: async (index) => {
     try {
       const floatingFile = path.join(__dirname, 'background', 'editor.html');
-      const urlStr = url.pathToFileURL(floatingFile).href + `?channel=${encodeURIComponent(state.eventChannel)}&caller=${encodeURIComponent('screen.compass')}&index=${encodeURIComponent(String(index||0))}`;
+      const urlStr = url.pathToFileURL(floatingFile).href + `?channel=${encodeURIComponent(state.eventChannel)}&caller=${encodeURIComponent('screen-compass')}&index=${encodeURIComponent(String(index||0))}`;
       emitUpdate('floatingUrl', urlStr);
       return true;
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
