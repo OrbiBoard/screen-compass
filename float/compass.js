@@ -1,5 +1,6 @@
 const center = document.getElementById('center');
 const ring = document.getElementById('ring');
+const compassContainer = document.getElementById('compass-container');
 
 let expanded = false;
 let items = [];
@@ -14,6 +15,29 @@ let centerSize = 50;
 let centerIcon = 'ri-compass-3-line';
 let hAnchorLeft = null; let hAnchorTop = null;
 let appActive = false;
+
+let dragStartBounds = null;
+let dragStartMouseX = 0;
+let dragStartMouseY = 0;
+
+function setContainerStyle(active, x, y) {
+  if (active) {
+    compassContainer.style.position = 'absolute';
+    compassContainer.style.left = x + 'px';
+    compassContainer.style.top = y + 'px';
+    const w = expanded ? sizeExpanded : sizeCollapsed;
+    const h = expanded ? sizeExpanded : sizeCollapsed;
+    compassContainer.style.width = w + 'px';
+    compassContainer.style.height = h + 'px';
+  } else {
+    compassContainer.style.position = 'relative';
+    compassContainer.style.left = '';
+    compassContainer.style.top = '';
+    compassContainer.style.width = '100%';
+    compassContainer.style.height = '100%';
+    compassContainer.style.transform = '';
+  }
+}
 
 async function ensureDefaults() {
   const defaults = { buttons: [ { id: 'rollcall', label: '随机点名', icon: 'ri-shuffle-line', actionType: 'plugin', actionPayload: { pluginId: 'rollcall-random', fn: 'openRollcallTemplate', args: [] } } ] };
@@ -212,7 +236,7 @@ center.addEventListener('click', () => { if (dragging || justDragged || toggleLo
 let inactivityTimer = null;
 function resetInactivityTimer(){ try { if (theme==='hleft' || theme==='hright') return; if (inactivityTimer) clearTimeout(inactivityTimer); inactivityTimer = setTimeout(() => { if (expanded) setExpanded(false); }, 30000); } catch (e) {} }
 
-let dragging = false; let startScreenX = 0; let startScreenY = 0; let lastScreenX = 0; let lastScreenY = 0; let lastClientX = 0; let lastClientY = 0; let startWinX = 0; let startWinY = 0; let moved = false; let justDragged = false; let rafScheduled = false; let nextX = 0; let nextY = 0; let downClientX = 0; let downClientY = 0; let boundsReady = false;
+let dragging = false; let startScreenX = 0; let startScreenY = 0; let lastScreenX = 0; let lastScreenY = 0; let lastClientX = 0; let lastClientY = 0; let moved = false; let justDragged = false; let rafScheduled = false; let nextX = 0; let nextY = 0; let downClientX = 0; let downClientY = 0; let boundsReady = false;
 function getCentroid(touches) {
   if (!touches || touches.length === 0) return { x: 0, y: 0 };
   let sx = 0, sy = 0;
@@ -223,34 +247,38 @@ function getCentroid(touches) {
   return { x: sx / touches.length, y: sy / touches.length };
 }
 let lastTouchCentroid = { x: 0, y: 0 };
-let touchWinX = 0; let touchWinY = 0;
+let startTouchCentroid = { x: 0, y: 0 };
+let lastEffectiveTouchCentroid = { x: 0, y: 0 };
+let startWinX = 0; let startWinY = 0; // The initial window position when drag starts
+let currentWinX = 0; let currentWinY = 0; // The calculated current window position (to be smooth)
+let touchWinX = 0; let touchWinY = 0; // (Unused in new logic but kept for compatibility if needed)
 
 function handleTouchStart(e) {
   if (e.touches.length === 0) return;
-  // 更新活跃时间防止自动收起
   resetInactivityTimer();
   
-  // 仅在第一个手指按下时初始化
-  const isFirst = (e.touches.length === 1);
   const c = getCentroid(e.touches);
-  lastTouchCentroid = c;
+  const isFirst = (e.touches.length === 1);
   
   if (isFirst) {
     dragging = true;
     moved = false;
     boundsReady = false;
-    // 异步获取当前窗口位置作为基准
+    
+    lastTouchCentroid = c;
+    startTouchCentroid = c;
+    lastEffectiveTouchCentroid = c;
+    
     window.compassAPI.getBounds().then((raw) => {
       const b = (raw && raw.result) ? raw.result : raw;
-      touchWinX = (b && typeof b.x === 'number') ? b.x : 0;
-      touchWinY = (b && typeof b.y === 'number') ? b.y : 0;
+      dragStartBounds = b;
+      dragStartMouseX = c.x;
+      dragStartMouseY = c.y;
+      
+      try { window.compassAPI.pluginCall('screen-compass', 'setDragging', [true, 0, 0, 'touch']); } catch (e) {}
+      setContainerStyle(true, b.x, b.y);
       boundsReady = true;
     });
-    // 通知后端开始拖动（用于锁定窗口大小等状态，但不启动光标追踪）
-    try { window.compassAPI.pluginCall('screen-compass', 'setDragging', [true, 0, 0, 'touch']); } catch (e) {}
-  } else {
-    // 多指状态下，如果有新手指按下，只更新重心，不移动窗口，防止跳动
-    // 此时不需要做额外操作，lastTouchCentroid 已更新
   }
 }
 
@@ -259,36 +287,41 @@ function handleTouchMove(e) {
   try { if (e.cancelable) e.preventDefault(); } catch (e) {}
   
   const c = getCentroid(e.touches);
-  const dx = c.x - lastTouchCentroid.x;
-  const dy = c.y - lastTouchCentroid.y;
+  const dist = Math.sqrt(Math.pow(c.x - lastEffectiveTouchCentroid.x, 2) + Math.pow(c.y - lastEffectiveTouchCentroid.y, 2));
   
-  // 只有当窗口位置基准已就绪时才移动
-  if (boundsReady) {
-    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-      moved = true;
-      touchWinX += dx;
-      touchWinY += dy;
-      try { window.compassAPI.moveTo(Math.round(touchWinX), Math.round(touchWinY)); } catch (e) {}
-    }
+  if (dist < 5) return;
+
+  if (boundsReady && dragStartBounds) {
+    moved = true;
+    const dx = c.x - startTouchCentroid.x;
+    const dy = c.y - startTouchCentroid.y;
+    
+    compassContainer.style.transform = `translate(${dx}px, ${dy}px)`;
+    lastEffectiveTouchCentroid = c;
   }
   
   lastTouchCentroid = c;
 }
 
 function handleTouchEnd(e) {
-  // 如果还有手指在屏幕上
   if (e.touches.length > 0) {
-    // 更新重心为剩余手指的重心，防止跳动
-    lastTouchCentroid = getCentroid(e.touches);
+    // 简化处理，忽略多指切换的复杂重置
   } else {
-    // 所有手指离开
     dragging = false;
-    if (moved) {
-      justDragged = true;
-      setTimeout(() => { justDragged = false; }, 200);
+    if (moved && boundsReady && dragStartBounds) {
+      const dx = lastEffectiveTouchCentroid.x - startTouchCentroid.x;
+      const dy = lastEffectiveTouchCentroid.y - startTouchCentroid.y;
+      const finalX = dragStartBounds.x + dx;
+      const finalY = dragStartBounds.y + dy;
+      try { window.compassAPI.pluginCall('screen-compass', 'setDragging', [false, finalX, finalY]); } catch (e) {}
+      justDragged = true; setTimeout(() => { justDragged = false; }, 200);
+    } else {
+      try { window.compassAPI.pluginCall('screen-compass', 'setDragging', [false]); } catch (e) {}
     }
+    setContainerStyle(false);
+    boundsReady = false;
+    dragStartBounds = null;
     window.compassAPI.snap();
-    try { window.compassAPI.pluginCall('screen-compass', 'setDragging', [false]); } catch (e) {}
   }
 }
 
@@ -302,34 +335,69 @@ function onPointerDown(e){
   // 如果是触摸类型，交给 touch 事件处理，pointer 事件忽略
   if (String(e.pointerType || '').toLowerCase() === 'touch') return;
   
-  dragging = true; moved = false; boundsReady = true; startScreenX = e.screenX; startScreenY = e.screenY; lastScreenX = startScreenX; lastScreenY = startScreenY; downClientX = e.clientX; downClientY = e.clientY; lastClientX = downClientX; lastClientY = downClientY; const inputType = String(e.pointerType||'').toLowerCase(); try { e.preventDefault(); } catch (e) {} try { center.setPointerCapture(e.pointerId); } catch (e) {} const offsetX = Math.max(0, Number(downClientX||e.clientX||0)); const offsetY = Math.max(0, Number(downClientY||e.clientY||0)); try { window.compassAPI.pluginCall('screen-compass','setDragging',[true, offsetX, offsetY, inputType]); } catch (e) {} window.compassAPI.getBounds().then((raw)=>{ const b = (raw && raw.result) ? raw.result : raw; startWinX = (b && typeof b.x==='number')? b.x:0; startWinY = (b && typeof b.y==='number')? b.y:0; }); }
-function onPointerMove(e){
-  // 如果是触摸类型，交给 touch 事件处理
-  if (String(e.pointerType || '').toLowerCase() === 'touch') return;
+  dragging = true; moved = false; boundsReady = false; 
+  startScreenX = e.screenX; startScreenY = e.screenY; 
+  downClientX = e.clientX; downClientY = e.clientY; 
   
-  if (!dragging) return;
-  try {
-    const evs = (typeof e.getCoalescedEvents === 'function') ? e.getCoalescedEvents() : null;
-    if (evs && evs.length) {
-      const le = evs[evs.length-1];
-      lastClientX = le.clientX; lastClientY = le.clientY;
-      lastScreenX = le.screenX; lastScreenY = le.screenY;
-    } else {
-      lastClientX = e.clientX; lastClientY = e.clientY;
-      lastScreenX = e.screenX; lastScreenY = e.screenY;
-    }
-  } catch (e) {
-    lastClientX = e.clientX; lastClientY = e.clientY;
-    lastScreenX = e.screenX; lastScreenY = e.screenY;
-  }
-  if (!boundsReady) { return; }
-  const cdx = lastClientX - downClientX, cdy = lastClientY - downClientY;
-  if (Math.abs(cdx) > 2 || Math.abs(cdy) > 2) moved = true;
-  try { e.preventDefault(); } catch (e) {}
-  // 鼠标拖动逻辑已由后端接管 (startDragTracking)，前端无需发送移动指令
+  try { e.preventDefault(); } catch (e) {} 
+  try { center.setPointerCapture(e.pointerId); } catch (e) {} 
+  
+  window.compassAPI.getBounds().then((raw)=>{ 
+      const b = (raw && raw.result) ? raw.result : raw; 
+      dragStartBounds = b;
+      dragStartMouseX = e.screenX;
+      dragStartMouseY = e.screenY;
+      
+      try { window.compassAPI.pluginCall('screen-compass','setDragging',[true, 0, 0, 'mouse']); } catch (e) {} 
+      setContainerStyle(true, b.x, b.y);
+      boundsReady = true;
+  }); 
 }
-function onPointerUp(e){ try { center.releasePointerCapture(e.pointerId); } catch (e) {} dragging=false; boundsReady=false; rafScheduled=false; if (moved) { justDragged = true; setTimeout(()=>{ justDragged=false; }, 200); } window.compassAPI.snap(); try { window.compassAPI.pluginCall('screen-compass','setDragging',[false]); } catch (e) {} }
-function onPointerCancel(e){ try { center.releasePointerCapture(e.pointerId); } catch (e) {} dragging=false; boundsReady=false; rafScheduled=false; moved=false; }
+function onPointerMove(e){
+  if (String(e.pointerType || '').toLowerCase() === 'touch') return;
+  if (!dragging) return;
+  
+  if (!boundsReady || !dragStartBounds) return;
+
+  const dx = e.screenX - dragStartMouseX;
+  const dy = e.screenY - dragStartMouseY;
+  
+  if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
+  
+  compassContainer.style.transform = `translate(${dx}px, ${dy}px)`;
+  
+  try { e.preventDefault(); } catch (e) {}
+}
+function onPointerUp(e){ 
+    try { center.releasePointerCapture(e.pointerId); } catch (e) {} 
+    dragging=false; 
+    
+    if (moved && boundsReady && dragStartBounds) {
+        const dx = e.screenX - dragStartMouseX;
+        const dy = e.screenY - dragStartMouseY;
+        const finalX = dragStartBounds.x + dx;
+        const finalY = dragStartBounds.y + dy;
+        
+        try { window.compassAPI.pluginCall('screen-compass','setDragging',[false, finalX, finalY]); } catch (e) {}
+    } else {
+        try { window.compassAPI.pluginCall('screen-compass','setDragging',[false]); } catch (e) {}
+        if (moved) { justDragged = true; setTimeout(()=>{ justDragged=false; }, 200); }
+    }
+    
+    setContainerStyle(false);
+    boundsReady=false; 
+    dragStartBounds = null;
+    window.compassAPI.snap(); 
+}
+function onPointerCancel(e){ 
+    try { center.releasePointerCapture(e.pointerId); } catch (e) {} 
+    dragging=false; 
+    setContainerStyle(false);
+    boundsReady=false; 
+    dragStartBounds = null;
+    moved=false; 
+    try { window.compassAPI.pluginCall('screen-compass','setDragging',[false]); } catch (e) {}
+}
 center.addEventListener('pointerdown', onPointerDown);
 center.addEventListener('pointermove', onPointerMove);
 center.addEventListener('pointerup', onPointerUp);

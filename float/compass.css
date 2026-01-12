@@ -15,7 +15,17 @@ body { margin: 0; background: transparent; display:flex; align-items:center; jus
 .hidden { opacity:0; transform: scale(0.6); pointer-events:none; }
 .sectors { position:absolute; inset:0; pointer-events:none; z-index: 1; }
 .wedge { transition: opacity .2s ease; }
-.circle-bg { position:absolute; inset:0; border-radius:50%; background: rgba(20,28,40,0.28); border: 1px solid rgba(255,255,255,0.18); pointer-events: auto; z-index: 0; }
+.circle-bg { 
+  position:absolute; 
+  inset:0; 
+  border-radius:50%; 
+  background: rgba(20,28,40,0.28); 
+  border: 1px solid rgba(255,255,255,0.18); 
+  pointer-events: auto; 
+  z-index: 0;
+  -webkit-mask: radial-gradient(transparent 26px, black 27px);
+  mask: radial-gradient(transparent 26px, black 27px);
+}
 .sector .circle-bg { opacity: 1; }
 .classic .circle-bg { opacity: 0; }
 .classic .item { background: transparent; border: none; height: 58px; width: 56px; }

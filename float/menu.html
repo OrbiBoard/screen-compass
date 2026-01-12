@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Compass Menu</title>
+    <link rel="stylesheet" href="../../../renderer/remixicon-local.css" />
+    <link rel="stylesheet" href="compass.css" />
+    <style>
+      /* Overrides for separated menu window */
+      body { background: transparent; }
+      .root { pointer-events: none; } /* Pass through clicks on empty areas */
+      .sectors, .ring, .htray, .hbg, .circle-bg, .center-btn { pointer-events: auto; }
+      .center-btn {
+        width: 50px; height: 50px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(20,28,40,0.62);
+        border: 1px solid rgba(255,255,255,0.30);
+        cursor: pointer;
+        color: white;
+        font-size: 22px;
+        transition: transform 0.1s;
+        z-index: 100; /* Ensure it is on top */
+      }
+      .center-btn:active { transform: scale(0.96); }
+    </style>
+  </head>
+  <body>
+    <div class="root" id="root">
+      <div id="compass-container" style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+        <div class="circle-bg" id="circleBg"></div>
+        <div class="sectors" id="sectors"></div>
+        <div class="ring" id="ring"></div>
+        <div class="hbg" id="hTrayBg"></div>
+        <div class="htray" id="hTray"></div>
+        <!-- Center button -->
+        <div class="center-btn" id="center"><i class="ri-compass-3-line"></i></div>
+      </div>
+      <div id="drag-hint" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); color: white; padding: 4px 12px; border-radius: 4px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity 0.2s;">
+        点击主按钮收起即可开始拖动
+      </div>
+    </div>
+    <script src="menu.js"></script>
+  </body>
+</html>
