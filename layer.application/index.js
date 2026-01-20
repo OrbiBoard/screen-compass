@@ -1,3 +1,5 @@
+
+
 const ring = document.getElementById('ring');
 const compassContainer = document.getElementById('compass-container');
 const center = document.getElementById('center');
@@ -7,21 +9,13 @@ let expanded = false;
 let items = [];
 const scope = 'screen-compass';
 const altScope = 'screen-compass';
-let theme = 'classic';
+let theme = 'sector';
 let activeIndex = -1;
 let sizeCollapsed = 60;
 let sizeExpanded = 240;
 let centerSize = 50;
 let centerIcon = 'ri-compass-3-line';
 let appActive = false;
-
-// We don't resize the container here anymore, the window size is managed by main process
-// But we need to ensure layout fits.
-function setContainerStyle(active) {
-  // Mostly for cleanup if needed
-}
-
-// ... existing code ...
 
 // Update center button icon
 function updateCenterIcon() {
@@ -68,6 +62,7 @@ async function ensureDefaults() {
 async function loadItems() {
   try { let raw = await window.compassAPI.configGet(scope, 'buttons'); const list = (raw && raw.result) ? raw.result : raw; items = Array.isArray(list) ? list : []; if (!items.length) { try { raw = await window.compassAPI.configGet(altScope, 'buttons'); const list2 = (raw && raw.result) ? raw.result : raw; items = Array.isArray(list2) ? list2 : items; } catch (e) {} } } catch (e) { items = []; }
   try { let t = await window.compassAPI.configGet(scope, 'theme'); let v = (t && t.result) ? t.result : t; theme = ['classic','sector','hleft','hright'].includes(v)?v:'classic'; if (!t) { try { t = await window.compassAPI.configGet(altScope, 'theme'); v = (t && t.result) ? t.result : t; theme = ['classic','sector','hleft','hright'].includes(v)?v:theme; } catch (e) {} } } catch (e) { theme = 'classic'; }
+  try { await window.compassAPI.pluginCall('screen-compass', 'updateTheme', [theme]); } catch(e){}
   try { let v = await window.compassAPI.configGet(scope, 'sizeCollapsed'); sizeCollapsed = Number((v && v.result) ? v.result : v) || 60; if (!v) { try { v = await window.compassAPI.configGet(altScope, 'sizeCollapsed'); sizeCollapsed = Number((v && v.result) ? v.result : v) || sizeCollapsed; } catch (e) {} } } catch (e) { sizeCollapsed = 60; }
   try { let v = await window.compassAPI.configGet(scope, 'sizeExpanded'); sizeExpanded = Number((v && v.result) ? v.result : v) || 240; if (!v) { try { v = await window.compassAPI.configGet(altScope, 'sizeExpanded'); sizeExpanded = Number((v && v.result) ? v.result : v) || sizeExpanded; } catch (e) {} } } catch (e) { sizeExpanded = 240; }
   try { let v = await window.compassAPI.configGet(scope, 'centerSize'); centerSize = Number((v && v.result) ? v.result : v) || 50; if (!v) { try { v = await window.compassAPI.configGet(altScope, 'centerSize'); centerSize = Number((v && v.result) ? v.result : v) || centerSize; } catch (e) {} } } catch (e) { centerSize = 50; }
@@ -157,8 +152,9 @@ function placeItems() {
     const centerY = btnTopFixed + Math.round(centerSize/2);
     const trayHeight = Math.max(Math.round(centerSize) + 8, 48);
     const bgHeight = Math.max(Math.round(centerSize) + 18, 56);
-    const bgTop = cy - Math.round(bgHeight/2);
-    const trayTop = cy - Math.round(trayHeight/2);
+    // Align tray and background to the center of the button (centerY) instead of window center (cy)
+    const bgTop = centerY - Math.round(bgHeight/2);
+    const trayTop = centerY - Math.round(trayHeight/2);
     
     let bgLeft, bgWidth, trayLeft;
     const bgPadH = 8;
@@ -169,17 +165,25 @@ function placeItems() {
        trayLeft = cx - Math.round(centerSize/2) - 12 - totalW;
        bgLeft = trayLeft - bgPadH;
        hTray.style.justifyContent = 'flex-end';
+       hTray.style.paddingRight = '8px'; // Add padding near button
+       hTray.style.paddingLeft = '0px';
     } else { // hright
        trayLeft = cx + Math.round(centerSize/2) + 12;
-       bgLeft = cx - Math.round(centerSize/2) - 12 - bgPadH; // Covers center too?
-       // Original logic covered center. Let's just cover tray for now or similar.
-       // User said "Application layer". Maybe just the tray.
+       bgLeft = cx - Math.round(centerSize/2) - 12 - bgPadH; 
        hTray.style.justifyContent = 'flex-start';
+       hTray.style.paddingLeft = '8px'; // Add padding near button
+       hTray.style.paddingRight = '0px';
     }
     
     hTray.style.left = trayLeft + 'px';
     hTray.style.top = trayTop + 'px';
     hTray.style.height = trayHeight + 'px';
+    // Increase tray width to accommodate padding without shrinking content?
+    // Box-sizing is not set for htray, so padding adds to width.
+    // We set width to totalW. If we add padding, actual width becomes totalW + 8.
+    // This might overlap?
+    // Let's set box-sizing to border-box.
+    hTray.style.boxSizing = 'border-box';
     hTray.style.width = totalW + 'px';
     
     if (hTrayBg) {
@@ -233,49 +237,73 @@ function placeItems() {
   }
 
   // Calculate required window size and center offset
-  const margin = 20;
+  const margin = 16;
   let reqW = 240, reqH = 240, offX = 120, offY = 120;
   
   if (isH) {
      // For Horizontal:
      // centerSize, totalW (items), gap, pads
-     const itemWidth = 56; const gap = 8; const pad = 16; 
+     const itemWidth = 56; const gap = 8; const pad = 24; 
      const totalW = (N>0)? (N*itemWidth + Math.max(0, N-1)*gap + pad) : pad;
      const bgPadH = 8;
      
      // Full width includes center button + spacing + tray
      // spacing is 12px between center and tray (or tray end)
-     // centerSize + 12 + totalW + (bgPadH*2 included in total logic?)
-     // Let's use the visual bounds.
-     // Center button is at one end. Tray is at other.
-     // Width = centerSize + 24 + totalW + bgPadH*2 ? 
-     // Let's rely on the computed widths in placeItems loop
      const bgWidth = centerSize + 24 + totalW + bgPadH * 2;
      
-     reqW = Math.max(240, bgWidth + margin*2);
-     reqH = Math.max(240, Math.max(Math.round(centerSize)+18, 56) + margin*2);
+     reqW = bgWidth + margin*2; // No min width constraint, fit content
+     reqH = Math.max(Math.round(centerSize)+18, 56) + margin*2;
      
-     // Calculate offset of the "center button" relative to the new window 
-     // Our window content is centered in the window body by flex.
-     // So the window center is (reqW/2, reqH/2).
-     // placeItems uses 'cx' and 'cy' as center.
-     // We just need to tell main process that "center" is at reqW/2, reqH/2.
-     // Wait, placeItems uses W/2, H/2. So if we resize window, W/2 changes.
-     // So we simply need to request a size, and the layout will re-center itself.
-     offX = Math.floor(reqW / 2);
-     offY = Math.floor(reqH / 2);
+     // ANCHOR CALCULATION
+     // We need to tell main process where the "center" of the drag button is, relative to our window.
+     // margin is 16.
+     // centerTop = 12. centerY = 12 + centerSize/2.
+     
+     if (theme === 'hleft') {
+         // Menu expands to LEFT. Button is on RIGHT.
+         // Layout: [Items] [Gap] [Button]
+         // From placeItems logic:
+         // centerX = reqW - 18 - centerSize + 5 = reqW - 13 - centerSize
+         // Button Center X = centerX + centerSize/2
+         offX = Math.floor(reqW - 13 - centerSize/2);
+     } else {
+         // Menu expands to RIGHT. Button is on LEFT.
+         // From placeItems logic:
+         // centerX = 18 + 5 = 23
+         // Button Center X = 23 + centerSize/2
+         offX = Math.floor(23 + centerSize/2);
+     }
+     
+     offY = Math.floor(12 + centerSize/2);
+     
   } else {
      // Radial
      const d = sizeExpanded + margin*2;
-     reqW = Math.max(240, d);
-     reqH = Math.max(240, d);
+     reqW = d; 
+     reqH = d;
      offX = Math.floor(reqW / 2);
      offY = Math.floor(reqH / 2);
   }
   
   try {
-     window.compassAPI.pluginCall('screen-compass', 'resizeMenu', [{ width: reqW, height: reqH, centerX: offX, centerY: offY }]);
+     // Send reqW, reqH, and ANCHOR POINTS (offX, offY)
+     window.compassAPI.pluginCall('screen-compass', 'setSize', [reqW, reqH, offX, offY]);
   } catch(e) {}
+  
+  // Fix drag hint position for circle theme
+  if (dragHint) {
+      if (isH) {
+          dragHint.style.bottom = '20px';
+          dragHint.style.top = '';
+          dragHint.style.transform = 'translateX(-50%)';
+      } else {
+          // Place below center button
+          dragHint.style.bottom = '';
+          dragHint.style.top = '50%';
+          dragHint.style.transform = 'translateX(-50%) translateY(32px)';
+          dragHint.style.width = 'max-content';
+      }
+  }
 }
 
 function __fadeSet(el, v){ try { if (!el) return; el.style.transition = 'opacity .16s ease'; el.style.opacity = String(v); } catch (e) {} }

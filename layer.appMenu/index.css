@@ -1,0 +1,192 @@
+      :root {
+          --fg: #e6f0ff;
+          --muted: #88a;
+          --bg: #101820;
+          --panel: #162030;
+          --border: rgba(255, 255, 255, 0.18);
+          --accent: rgba(138, 180, 248, 0.4);
+      }
+
+      html,
+      body {
+          height: 100%;
+      }
+
+      body {
+          margin: 0;
+          background: var(--bg);
+          color: var(--fg);
+          font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Microsoft YaHei', sans-serif;
+      }
+
+      .root {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+      }
+
+      .topbar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px;
+          border-bottom: 1px solid var(--border);
+          background: rgba(20, 28, 40, 0.75);
+          backdrop-filter: blur(8px);
+      }
+
+      .title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-weight: 600;
+      }
+
+      .btn {
+          height: 30px;
+          border-radius: 8px;
+          border: 1px solid var(--border);
+          background: rgba(255, 255, 255, 0.08);
+          color: var(--fg);
+          cursor: pointer;
+          padding: 0 10px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+      }
+
+      .content {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          padding: 8px;
+          gap: 8px;
+      }
+
+      .grid-wrap {
+          position: relative;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          background: rgba(16, 24, 36, 0.85);
+          display: flex;
+          flex-direction: column;
+          height: 340px;
+          padding: 44px 8px;
+      }
+
+      .grid-scroll {
+          flex: 1;
+          overflow-y: auto;
+          position: relative;
+          z-index: 1;
+      }
+
+      .grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          grid-auto-rows: 100px;
+          gap: 8px;
+          padding: 4px;
+      }
+
+      .cell {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 10px;
+          background: rgba(255, 255, 255, 0.06);
+          user-select: none;
+          cursor: pointer;
+          position: relative;
+      }
+
+      .cell .name {
+          font-size: 12px;
+          text-align: center;
+          color: var(--fg);
+          max-width: 96%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+      }
+
+      .icon-wrap {
+          position: relative;
+          width: 28px;
+          height: 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+      }
+
+      .cell .pin {
+          position: absolute;
+          top: 6px;
+          right: 6px;
+          width: 16px;
+          height: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 6px;
+          background: rgba(255, 255, 255, 0.18);
+          border: 1px solid rgba(255, 255, 255, 0.22);
+      }
+
+      .arrow {
+          position: absolute;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 96px;
+          height: 28px;
+          border-radius: 14px;
+          border: 1px solid var(--border);
+          background: rgba(255, 255, 255, 0.08);
+          color: var(--fg);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          z-index: 10;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+          backdrop-filter: blur(6px);
+      }
+
+      .arrow.up {
+          top: 8px;
+      }
+
+      .arrow.down {
+          bottom: 8px;
+      }
+
+      .arrow i {
+          font-size: 18px;
+      }
+
+      .grid-scroll::-webkit-scrollbar {
+          width: 10px;
+      }
+
+      .grid-scroll::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.12);
+          border-radius: 10px;
+          border: 2px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .grid-scroll::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.18);
+      }
+
+      .grid-scroll::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.06);
+          border-radius: 10px;
+      }
+
+      .grid-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.12) rgba(255, 255, 255, 0.06);
+      }

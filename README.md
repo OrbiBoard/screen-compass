@@ -1,11 +1,7 @@
-# screen-compass 插件
+# 屏幕罗盘
+## 悬浮与屏幕的快捷菜单
+Developers: PYLXU
 
-该仓库包含 OrbiBoard 主程序的 screen-compass 插件源码。
-
-用法
-- 将本目录作为独立 Git 仓库管理。
-- 依赖请在 `plugin.json` 的 `npmDependencies` 或 `dependencies` 中声明，由主程序在运行时通过插件依赖管理安装。
-
-开发
-- 页面入口：`float/compass.html` 与 `background/settings.html`
-- 后端入口：`index.js`
+# 功能
+- 支持高度自定义罗盘指向的功能
+- 支持在屏幕上进行移动操作

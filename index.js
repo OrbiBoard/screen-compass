@@ -5,7 +5,7 @@ const { BrowserWindow, app, screen, nativeImage, shell, ipcMain } = require('ele
 let __dragLogs = [];
 function addDragLog(msg) {
   if (__dragLogs.length > 500) __dragLogs.shift();
-  __dragLogs.push(`[${new Date().toLocaleTimeString()}.${String(Date.now()%1000).padStart(3,'0')}] ${msg}`);
+  __dragLogs.push(`[${new Date().toLocaleTimeString()}.${String(Date.now() % 1000).padStart(3, '0')}] ${msg}`);
 }
 
 // Helper for shortcut resolution
@@ -15,11 +15,11 @@ const fsp = fs.promises;
 
 function resolveShortcutTarget(p) {
   try {
-    const fp = String(p||''); if (!fp || process.platform !== 'win32') return '';
+    const fp = String(p || ''); if (!fp || process.platform !== 'win32') return '';
     if (String(fp).toLowerCase().endsWith('.lnk')) {
       const cmd = `(New-Object -COM WScript.Shell).CreateShortcut('${fp.replace(/'/g, "''")}').TargetPath`;
-      const out = execFileSync('powershell', ['-NoProfile','-ExecutionPolicy','Bypass','-Command', cmd], { encoding: 'utf8' });
-      const target = String(out||'').trim();
+      const out = execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', cmd], { encoding: 'utf8' });
+      const target = String(out || '').trim();
       return target || '';
     }
     return '';
@@ -32,14 +32,14 @@ async function buildAppsCache() {
   try {
     if (process.platform !== 'win32') { __appsCache.list = []; __appsCache.ts = Date.now(); return; }
     const roots = [
-      path.join(String(process.env['ProgramData']||''), 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
-      path.join(String(process.env['AppData']||''), 'Microsoft', 'Windows', 'Start Menu', 'Programs')
+      path.join(String(process.env['ProgramData'] || ''), 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
+      path.join(String(process.env['AppData'] || ''), 'Microsoft', 'Windows', 'Start Menu', 'Programs')
     ].filter(p => p && fs.existsSync(p));
     const out = [];
     const seen = new Set();
-    const isExe = (p) => String(p||'').toLowerCase().endsWith('.exe');
-    const isLnk = (p) => String(p||'').toLowerCase().endsWith('.lnk');
-    const pushApp = (p) => { try { const key = String(p||'').toLowerCase(); if (!key) return; if (seen.has(key)) return; seen.add(key); const nm = path.basename(p, path.extname(p)); out.push({ name: nm, path: p }); } catch (e) {} };
+    const isExe = (p) => String(p || '').toLowerCase().endsWith('.exe');
+    const isLnk = (p) => String(p || '').toLowerCase().endsWith('.lnk');
+    const pushApp = (p) => { try { const key = String(p || '').toLowerCase(); if (!key) return; if (seen.has(key)) return; seen.add(key); const nm = path.basename(p, path.extname(p)); out.push({ name: nm, path: p }); } catch (e) { } };
     const walk = async (dir, depth) => {
       try {
         const ents = await fsp.readdir(dir, { withFileTypes: true });
@@ -48,7 +48,7 @@ async function buildAppsCache() {
           if (d.isFile() && (isExe(p1) || isLnk(p1))) { pushApp(p1); continue; }
           if (d.isDirectory() && depth < 2) { await walk(p1, depth + 1); }
         }
-      } catch (e) {}
+      } catch (e) { }
     };
     for (const r of roots) { await walk(r, 0); }
     __appsCache.list = out.slice(0, 800);
@@ -61,7 +61,7 @@ let dragWin = null;
 let menuWin = null;
 let appWin = null;
 
-function emitUpdate(target, value){ try { pluginApi.emit(state.eventChannel, { type: 'update', target, value }); } catch (e) {} }
+function emitUpdate(target, value) { try { pluginApi.emit(state.eventChannel, { type: 'update', target, value }); } catch (e) { } }
 
 const state = {
   eventChannel: 'screen-compass-channel',
@@ -82,6 +82,34 @@ const state = {
   isStartup: true // Flag to ignore initial focus
 };
 
+function syncMenuPos() {
+  try {
+    if (!dragWin || dragWin.isDestroyed()) return;
+    if (!menuWin || menuWin.isDestroyed()) return;
+
+    const b = dragWin.getBounds();
+    // Center of dragWin
+    const cx = b.x + Math.floor(b.width / 2);
+    const cy = b.y + Math.floor(b.height / 2);
+
+    // We want to align menuWin's ANCHOR point to (cx, cy).
+    // menuWin TopLeft = (cx - anchorX, cy - anchorY)
+
+    const ax = (state.menuAnchorX !== undefined) ? state.menuAnchorX : Math.floor(state.menuWidth / 2);
+    const ay = (state.menuAnchorY !== undefined) ? state.menuAnchorY : Math.floor(state.menuHeight / 2);
+
+    const mx = cx - ax;
+    const my = cy - ay;
+
+    menuWin.setBounds({
+      x: mx,
+      y: my,
+      width: state.menuWidth,
+      height: state.menuHeight
+    });
+  } catch (e) { }
+}
+
 function createWindows() {
   try {
     if (dragWin && !dragWin.isDestroyed()) return;
@@ -89,12 +117,13 @@ function createWindows() {
     const pt = screen.getCursorScreenPoint ? screen.getCursorScreenPoint() : { x: 0, y: 0 };
     const d = screen.getDisplayNearestPoint ? screen.getDisplayNearestPoint(pt) : screen.getPrimaryDisplay();
     const b = d.bounds;
-    
+
     // --- Drag Window (Button) ---
-    const w = 50, h = 50, mr = 24, mb = 32;
+    // User Request 5: Default size 48px
+    const w = 48, h = 48, mr = 24, mb = 32;
     state.dragWinSize = w;
     const isLinux = process.platform === 'linux';
-    
+
     dragWin = new BrowserWindow({
       x: b.x + b.width - w - mr,
       y: b.y + b.height - h - mb,
@@ -120,19 +149,16 @@ function createWindows() {
         preload: path.join(__dirname, 'preload.js')
       }
     });
-    
-    dragWin.loadFile(path.join(__dirname, 'float', 'drag.html'));
-    
-    try { dragWin.setAlwaysOnTop(true, 'screen-saver'); } catch (e) {}
-    try { dragWin.setVisibleOnAllWorkspaces(true); } catch (e) {}
-    
-    // --- Menu Window (Application Layer) ---
-    // Initially hidden or transparent. We keep it shown but handle visibility via content/opacity to avoid flicker?
-    // User says "automatically focuses the application layer... judged as opening compass operation"
-    // Let's create it initially hidden to be safe.
+
+    dragWin.loadFile(path.join(__dirname, 'layer.surface', 'index.html'));
+
+    try { dragWin.setAlwaysOnTop(true, 'screen-saver'); } catch (e) { }
+    try { dragWin.setVisibleOnAllWorkspaces(true); } catch (e) { }
+
+    // 应用层
     menuWin = new BrowserWindow({
-      width: 240,
-      height: 240,
+      width: state.menuWidth || 240,
+      height: state.menuHeight || 240,
       frame: false,
       transparent: true,
       backgroundColor: '#00000000',
@@ -152,94 +178,115 @@ function createWindows() {
         preload: path.join(__dirname, 'preload.js')
       }
     });
-    
-    menuWin.loadFile(path.join(__dirname, 'float', 'menu.html'));
-    
-    // Ensure dragWin is on top of menuWin
+
+    menuWin.loadFile(path.join(__dirname, 'layer.application', 'index.html'));
+
+    // 层级调整
     const maintainZOrder = () => {
-        try {
-            if (menuWin && !menuWin.isDestroyed()) {
-                menuWin.setAlwaysOnTop(true, 'screen-saver');
-            }
-            if (dragWin && !dragWin.isDestroyed()) {
-                dragWin.setAlwaysOnTop(true, 'screen-saver');
-            }
-        } catch(e) {}
+      try {
+        if (menuWin && !menuWin.isDestroyed()) {
+          menuWin.setAlwaysOnTop(true, 'screen-saver');
+        }
+        if (dragWin && !dragWin.isDestroyed()) {
+          dragWin.setAlwaysOnTop(true, 'screen-saver');
+        }
+      } catch (e) { }
     };
     maintainZOrder();
 
     // --- Event Handling ---
-    
-    // Sync positions
-    const syncMenuPos = () => {
-        if (!dragWin || dragWin.isDestroyed()) return;
-        if (!menuWin || menuWin.isDestroyed()) return;
-        
-        const db = dragWin.getBounds();
-        const mb = menuWin.getBounds();
-        
-        // Center menuWin on dragWin based on current menuCenter offsets
-        const cx = db.x + Math.floor(db.width / 2);
-        const cy = db.y + Math.floor(db.height / 2);
-        
-        const mx = cx - (state.menuCenterX || Math.floor(mb.width / 2));
-        const my = cy - (state.menuCenterY || Math.floor(mb.height / 2));
-        
-        menuWin.setBounds({ x: mx, y: my, width: mb.width, height: mb.height });
-        
-        // Also sync AppWin if exists
-        if (appWin && !appWin.isDestroyed()) {
-             const awb = appWin.getBounds();
-             const ax = cx - Math.floor(awb.width / 2);
-             const ay = my - awb.height - 8; // Position above menu? Or relative to center.
-             // Original logic was relative to menu bottom.
-             appWin.setPosition(ax, ay);
-        }
-        
-        // Reinforce Z-order during moves
-        try { dragWin.moveTop(); } catch(e) {}
-    };
+
+    let focusStartPos = null;
+    let focusMoved = false;
 
     // 1. Drag Window Move Event
     dragWin.on('move', () => {
-        state.lastMoveTs = Date.now();
-        syncMenuPos();
+      focusMoved = true;
+      state.lastMoveTs = Date.now();
+      syncMenuPos();
     });
-    
-    // 2. Focus/Open Logic
-    let focusTimer = null;
-    dragWin.on('focus', () => {
-        // Ignore initial focus on startup
-        if (state.isStartup) {
-            state.isStartup = false;
-            return;
-        }
 
-        // When dragWin gains focus, start a timer.
-        // If no move occurs within threshold, open menu.
-        if (focusTimer) clearTimeout(focusTimer);
-        const checkTs = Date.now();
-        focusTimer = setTimeout(() => {
-            const now = Date.now();
-            // If we moved recently (since focus start), ignore
-            if (now - state.lastMoveTs < 200) {
-                // Moved recently, do nothing (drag operation)
+    // 2. Focus Logic (Smart Click)
+    // User Request 6: "When dragWin gets focus... if drag position is small determine as open... immediately let app layer focus"
+
+    let lastToggleTime = 0;
+
+    dragWin.on('focus', () => {
+      try {
+        if (!dragWin || dragWin.isDestroyed()) return;
+
+        const now = Date.now();
+        if (now - lastToggleTime < 300) return; // Debounce
+
+        focusStartPos = dragWin.getBounds();
+        focusMoved = false;
+
+        // Wait to distinguish click from drag start
+        setTimeout(async () => {
+          if (!dragWin || dragWin.isDestroyed()) return;
+
+          // If moved flag was set by 'move' handler, treat as drag, not click
+          if (focusMoved) return;
+
+          // Double check position just in case
+          const currentPos = dragWin.getBounds();
+          const dx = Math.abs(currentPos.x - focusStartPos.x);
+          const dy = Math.abs(currentPos.y - focusStartPos.y);
+
+          if (dx < 8 && dy < 8) { // Increased threshold slightly
+            // It's a click
+            lastToggleTime = Date.now();
+            const opened = await functions.toggleMenu();
+
+            // If opened (or was open), focus app layer
+            if (opened && menuWin && menuWin.isVisible()) {
+              menuWin.focus();
+              // dragWin will naturally lose focus to menuWin
             } else {
-                // No move, open compass
-                functions.openMenu();
+              // If CLOSED, we MUST force dragWin to lose focus so next click triggers 'focus' again.
+              // Since we can't focus desktop, we try to focus a dummy window then close it,
+              // or focus the main app window if available (but it might be hidden).
+              // Try focusing menuWin then hiding it? No, already hidden.
+              // Hack: Blur dragWin.
+              dragWin.blur();
+              // If blur doesn't work (Windows keeps focus), we are in trouble.
+              // Let's try to focus Shell/Desktop by minimizing and restoring? No.
+              // Let's try to create a dummy transparent window.
+              createDummyFocusStealer();
             }
-        }, 200); // Short time
+          }
+        }, 150);
+      } catch (e) { }
     });
-    
+
+    const createDummyFocusStealer = () => {
+      try {
+        let dummy = new BrowserWindow({
+          width: 1, height: 1,
+          x: -100, y: -100,
+          show: false,
+          frame: false,
+          skipTaskbar: true,
+          focusable: true
+        });
+        dummy.show();
+        dummy.focus();
+        setTimeout(() => {
+          dummy.close();
+          dummy = null;
+        }, 50);
+      } catch (e) { }
+    };
+
     // Ensure dragWin stays on top when menuWin gets focus
     menuWin.on('focus', () => {
-        try { if(dragWin && !dragWin.isDestroyed()) dragWin.moveTop(); } catch(e){}
+      try { if (dragWin && !dragWin.isDestroyed()) dragWin.moveTop(); } catch (e) { }
     });
-    
+
     // Initial sync
     setTimeout(syncMenuPos, 100);
-    
-    dragWin.on('closed', () => { dragWin = null; if(menuWin) menuWin.close(); });
+
+    dragWin.on('closed', () => { dragWin = null; if (menuWin) menuWin.close(); });
     menuWin.on('closed', () => { menuWin = null; });
 
   } catch (e) { console.error(e); }
@@ -247,55 +294,114 @@ function createWindows() {
 
 const functions = {
   createWindows,
-  
+
+  setSize: async (w, h, ax, ay) => {
+    state.menuWidth = w;
+    state.menuHeight = h;
+    // Store Anchor Points (relative to menuWin top-left)
+    state.menuAnchorX = (ax !== undefined) ? ax : Math.floor(w / 2);
+    state.menuAnchorY = (ay !== undefined) ? ay : Math.floor(h / 2);
+
+    if (menuWin && !menuWin.isDestroyed()) {
+      menuWin.setSize(w, h);
+      syncMenuPos();
+    }
+  },
+
+  resizeDragWin: async (w, h) => {
+    try {
+      if (dragWin && !dragWin.isDestroyed()) {
+        state.dragWinSize = w; // Approximate, as w includes shadow
+        // Keep center position
+        const b = dragWin.getBounds();
+        const cx = b.x + Math.floor(b.width / 2);
+        const cy = b.y + Math.floor(b.height / 2);
+        const nx = cx - Math.floor(w / 2);
+        const ny = cy - Math.floor(h / 2);
+        dragWin.setBounds({ x: nx, y: ny, width: w, height: h });
+        syncMenuPos();
+        return true;
+      }
+    } catch (e) { }
+    return false;
+  },
+
+  toggleMenu: async () => {
+    try {
+      if (!menuWin || menuWin.isDestroyed()) return functions.createWindows();
+      if (menuWin.isVisible()) {
+        return await functions.closeMenu();
+      } else {
+        return await functions.openMenu();
+      }
+    } catch (e) { return false; }
+  },
+
   openMenu: async () => {
     try {
-        if (!menuWin || menuWin.isDestroyed()) return;
-        if (!dragWin || dragWin.isDestroyed()) return;
-        
-        // Sync position first
-        const db = dragWin.getBounds();
-        const mw = 240, mh = 240; // Default expanded size
-        const cx = db.x + Math.floor(db.width / 2);
-        const cy = db.y + Math.floor(db.height / 2);
-        const mx = cx - Math.floor(mw / 2);
-        const my = cy - Math.floor(mh / 2);
-        
-        menuWin.setBounds({ x: mx, y: my, width: mw, height: mh });
-        menuWin.show();
-        menuWin.focus(); // Focus application layer
-        
-        // Hide dragWin when menu is expanded
-        try { dragWin.hide(); } catch(e){}
-        
-        pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: true });
-        return true;
-    } catch(e) { return false; }
-  },
-  
-  closeMenu: async () => {
-      try {
-          if (!menuWin || menuWin.isDestroyed()) return;
-          menuWin.hide();
-          
-          // Show dragWin when menu is collapsed
-          if (dragWin && !dragWin.isDestroyed()) {
-              dragWin.show();
-              // Small delay to ensure it's on top and visible
-              setTimeout(() => { try { dragWin.moveTop(); } catch(e){} }, 50);
-          }
+      if (!menuWin || menuWin.isDestroyed()) return;
+      if (!dragWin || dragWin.isDestroyed()) return;
 
-          pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: false });
-          return true;
-      } catch(e) { return false; }
+      syncMenuPos();
+
+      menuWin.show();
+      menuWin.focus(); // Focus application layer
+
+      // Do NOT hide dragWin, keep it as the center button
+      try { dragWin.moveTop(); } catch (e) { }
+
+      pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: true, theme: state.lastTheme || 'classic' });
+      return true;
+    } catch (e) { return false; }
+  },
+
+  closeMenu: async () => {
+    try {
+      if (!menuWin || menuWin.isDestroyed()) return;
+      menuWin.hide();
+
+      // Show dragWin (if it was hidden, though we don't hide it now)
+      if (dragWin && !dragWin.isDestroyed()) {
+        dragWin.show();
+        setTimeout(() => { try { dragWin.moveTop(); } catch (e) { } }, 50);
+      }
+
+      pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: false, theme: state.lastTheme || 'classic' });
+      return true;
+    } catch (e) { return false; }
+  },
+
+
+  updateTheme: async (t) => {
+    state.lastTheme = t;
+  },
+
+  getDragWinPos: async () => {
+    try {
+      if (dragWin && !dragWin.isDestroyed()) {
+        const b = dragWin.getBounds();
+        return { x: b.x, y: b.y };
+      }
+    } catch (e) { }
+    return null;
+  },
+
+  moveDragWin: async (x, y) => {
+    try {
+      if (dragWin && !dragWin.isDestroyed()) {
+        dragWin.setPosition(Math.round(x), Math.round(y));
+        return true;
+      }
+    } catch (e) { }
+    return false;
   },
 
   openCompass: async () => { return functions.createWindows(); },
-  
+
   openCompassSettings: async () => {
-      // ... (Same as before)
-      try {
-      const bgFile = path.join(__dirname, 'background', 'settings.html');
+    // ... (Same as before)
+    try {
+      const bgFile = path.join(__dirname, 'window.settings', 'pages', 'settings.html');
       const backgroundUrl = url.pathToFileURL(bgFile).href + `?channel=${encodeURIComponent(state.eventChannel)}&caller=${encodeURIComponent('screen-compass')}`;
       const params = {
         title: '屏幕罗盘设置',
@@ -328,12 +434,12 @@ const functions = {
           width: w, height: h, frame: true, backgroundColor: '#101820', show: true, resizable: true,
           webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') }
         });
-        win.loadFile(path.join(__dirname, 'background', 'settings.html'));
-      } catch (e) {}
+        win.loadFile(path.join(__dirname, 'window.settings', 'pages', 'settings.html'));
+      } catch (e) { }
       return true;
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
   },
-  
+
   // ... Keep existing helpers like performAction, listPlugins etc.
   performAction: async (button) => {
     // ... (Keep existing implementation)
@@ -371,7 +477,7 @@ const functions = {
         const p = String(payload.path || '').trim();
         const args = Array.isArray(payload.args) ? payload.args : [];
         if (!p) return false;
-        try { if (p.toLowerCase().endsWith('.lnk')) { try { await shell.openPath(p); return true; } catch (e) {} } const child = spawn(p, args, { detached: true, stdio: 'ignore' }); child.unref(); return true; } catch (e) { return { ok: false, error: e?.message || String(e) }; }
+        try { if (p.toLowerCase().endsWith('.lnk')) { try { await shell.openPath(p); return true; } catch (e) { } } const child = spawn(p, args, { detached: true, stdio: 'ignore' }); child.unref(); return true; } catch (e) { return { ok: false, error: e?.message || String(e) }; }
       }
       if (type === 'command') {
         const cmd = String(payload.cmd || '').trim();
@@ -398,7 +504,7 @@ const functions = {
             let c = ''; if (op === 'shutdown') c = 'shutdown -s -t 0'; else if (op === 'restart') c = 'shutdown -r -t 0'; else if (op === 'logoff') c = 'shutdown -l';
             if (!c) return false; const child = spawn('cmd', ['/c', c], { windowsHide: true, detached: true, stdio: 'ignore' }); child.unref();
           } else {
-             // ...
+            // ...
           }
           return true;
         } catch (e) { return { ok: false, error: e?.message || String(e) }; }
@@ -406,7 +512,7 @@ const functions = {
       return false;
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
   },
-  
+
   openApplicationsWindow: () => {
     // ... (Keep mostly same, adapt positioning)
     try {
@@ -421,7 +527,7 @@ const functions = {
             nx = wb.x + Math.floor((wb.width - useW) / 2);
             ny = wb.y - useH - 8;
             // ... boundary checks ...
-             const display = screen.getDisplayNearestPoint ? screen.getDisplayNearestPoint({ x: nx + Math.floor(useW / 2), y: ny + Math.floor(useH / 2) }) : screen.getPrimaryDisplay();
+            const display = screen.getDisplayNearestPoint ? screen.getDisplayNearestPoint({ x: nx + Math.floor(useW / 2), y: ny + Math.floor(useH / 2) }) : screen.getPrimaryDisplay();
             const sb = display.bounds;
             if (nx < sb.x) nx = sb.x;
             if (ny < sb.y) ny = sb.y;
@@ -429,12 +535,12 @@ const functions = {
             if (ny + useH > sb.y + sb.height) ny = sb.y + sb.height - useH;
             return { x: nx, y: ny, width: useW, height: useH };
           }
-        } catch (e) {}
+        } catch (e) { }
         const d = screen.getPrimaryDisplay();
         const b = d.bounds;
         return { x: b.x + Math.floor((b.width - useW) / 2), y: b.y + Math.floor((b.height - useH) / 2), width: useW, height: useH };
       };
-      if (appWin && !appWin.isDestroyed()) { try { appWin.show(); appWin.focus(); } catch (e) {} return true; }
+      if (appWin && !appWin.isDestroyed()) { try { appWin.show(); appWin.focus(); } catch (e) { } return true; }
       const pos = computePos();
       const isLinux = process.platform === 'linux';
       appWin = new BrowserWindow({
@@ -459,53 +565,69 @@ const functions = {
         hasShadow: true,
         webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') }
       });
-      appWin.loadFile(path.join(__dirname, 'background', 'app-window.html'));
-      try { appWin.on('closed', () => { appWin = null; }); } catch (e) {}
-      try { pluginApi.emit(state.eventChannel, { type: 'app.active', active: true }); } catch (e) {}
+      appWin.loadFile(path.join(__dirname, 'layer.appMenu', 'index.html'));
+      try { appWin.on('closed', () => { appWin = null; }); } catch (e) { }
+
+      // Auto-close on blur
+      try {
+        appWin.on('blur', () => {
+          setTimeout(() => {
+            try {
+              const dragFocused = dragWin && !dragWin.isDestroyed() && dragWin.isFocused();
+              const menuFocused = menuWin && !menuWin.isDestroyed() && menuWin.isFocused();
+              if (!dragFocused && !menuFocused && appWin && !appWin.isDestroyed() && !appWin.isFocused()) {
+                functions.closeApplicationsWindow();
+              }
+            } catch (e) { }
+          }, 150);
+        });
+      } catch (e) { }
+
+      try { pluginApi.emit(state.eventChannel, { type: 'app.active', active: true }); } catch (e) { }
       return true;
     } catch (e) { return false; }
   },
-  
+
   closeApplicationsWindow: () => {
     try {
       const had = !!(appWin && !appWin.isDestroyed());
-      if (had) { try { appWin.close(); } catch (e) {} appWin = null; }
-      try { pluginApi.emit(state.eventChannel, { type: 'app.active', active: false }); } catch (e) {}
+      if (had) { try { appWin.close(); } catch (e) { } appWin = null; }
+      try { pluginApi.emit(state.eventChannel, { type: 'app.active', active: false }); } catch (e) { }
       return had;
     } catch (e) { return false; }
   },
-  
+
   // Keep required exports
-  listPlugins: () => { try { const pm = require(path.join(app.getAppPath(), 'src', 'main', 'pluginManager.js')); return pm.getPlugins(); } catch(e){return [];} },
-  listAutomationEvents: (pluginId) => { try { const pm = require(path.join(app.getAppPath(), 'src', 'main', 'pluginManager.js')); const res = pm.listAutomationEvents(pluginId); return (res&&res.ok&&Array.isArray(res.events)) ? res.events : []; } catch(e){return [];} },
+  listPlugins: () => { try { const pm = require(path.join(app.getAppPath(), 'src', 'main', 'pluginManager.js')); return pm.getPlugins(); } catch (e) { return []; } },
+  listAutomationEvents: (pluginId) => { try { const pm = require(path.join(app.getAppPath(), 'src', 'main', 'pluginManager.js')); const res = pm.listAutomationEvents(pluginId); return (res && res.ok && Array.isArray(res.events)) ? res.events : []; } catch (e) { return []; } },
   listInstalledApps: () => {
-      // (Copy existing implementation or minimal version)
-      try {
-        if (process.platform !== 'win32') return [];
-        const now = Date.now();
-        if (__appsCache.list.length && (now - __appsCache.ts) < 600000) return __appsCache.list.slice(0, 300);
-        if (!__appsCache.building) { __appsCache.building = true; buildAppsCache().finally(() => { __appsCache.building = false; }); }
-        return __appsCache.list.slice(0, 120);
-      } catch (e) { return []; }
+    // (Copy existing implementation or minimal version)
+    try {
+      if (process.platform !== 'win32') return [];
+      const now = Date.now();
+      if (__appsCache.list.length && (now - __appsCache.ts) < 600000) return __appsCache.list.slice(0, 300);
+      if (!__appsCache.building) { __appsCache.building = true; buildAppsCache().finally(() => { __appsCache.building = false; }); }
+      return __appsCache.list.slice(0, 120);
+    } catch (e) { return []; }
   },
   getFileIconDataUrl: async (p) => {
     try {
-      const fp = String(p||''); if (!fp) return '';
+      const fp = String(p || ''); if (!fp) return '';
       let usePath = fp;
-      try { const target = resolveShortcutTarget(fp); if (target) usePath = target; } catch (e) {}
+      try { const target = resolveShortcutTarget(fp); if (target) usePath = target; } catch (e) { }
       const img = await app.getFileIcon(usePath, { size: 'normal' });
       if (!img || img.isEmpty()) return '';
       return img.toDataURL();
     } catch (e) { return ''; }
   },
-  
+
   // Legacy / IPC handlers
   setDragging: (flag, offsetX, offsetY, inputType) => {
-      // This might be called from old code or drag.js if we keep manual drag.
-      // But if we use native drag, this might not be needed or only for updates.
-      return true;
+    // This might be called from old code or drag.js if we keep manual drag.
+    // But if we use native drag, this might not be needed or only for updates.
+    return true;
   },
-  
+
   onLowbarEvent: async (payload = {}) => {
     try {
       if (payload?.type === 'left.click') {
@@ -530,11 +652,11 @@ const functions = {
       return true;
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
   },
-  
+
   openItemEditor: async (index) => {
     try {
-      const floatingFile = path.join(__dirname, 'background', 'editor.html');
-      const urlStr = url.pathToFileURL(floatingFile).href + `?channel=${encodeURIComponent(state.eventChannel)}&caller=${encodeURIComponent('screen-compass')}&index=${encodeURIComponent(String(index||0))}`;
+      const floatingFile = path.join(__dirname, 'window.settings', 'pages', 'editor.html');
+      const urlStr = url.pathToFileURL(floatingFile).href + `?channel=${encodeURIComponent(state.eventChannel)}&caller=${encodeURIComponent('screen-compass')}&index=${encodeURIComponent(String(index || 0))}`;
       emitUpdate('floatingUrl', urlStr);
       return true;
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
@@ -546,23 +668,23 @@ const functions = {
       return true;
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
   },
-  
+
   // Snapshot/Snap helpers (simplified)
-  snap: () => {},
-  logSnapshot: () => {},
-  setExpandedWindow: () => {} // Deprecated as we handle it internally now
+  snap: () => { },
+  logSnapshot: () => { },
+  setExpandedWindow: () => { } // Deprecated as we handle it internally now
 };
 
 const init = async (api) => {
   pluginApi = api;
   try {
     if (!pluginApi.logWrite) {
-      pluginApi.logWrite = (level, ...args) => { try { console.log(...args); } catch (e) {} };
+      pluginApi.logWrite = (level, ...args) => { try { console.log(...args); } catch (e) { } };
     }
     if (!pluginApi.log) {
-      pluginApi.log = (msg) => { try { pluginApi.logWrite('info', String(msg||'')); } catch (e) {} };
+      pluginApi.log = (msg) => { try { pluginApi.logWrite('info', String(msg || '')); } catch (e) { } };
     }
-  } catch (e) {}
+  } catch (e) { }
   const ready = () => { functions.createWindows(); };
   if (app.isReady()) ready(); else app.once('ready', ready);
 };
