@@ -29,11 +29,12 @@ async function load() {
         const plugins = Array.isArray(list) ? list : [];
         try { const raw = await window.compassAPI.configGet('screen-compass', 'appPins'); const vals = (raw && raw.result) ? raw.result : raw; pins = Array.isArray(vals) ? vals : []; } catch (e) { pins = []; }
         grid.innerHTML = '';
-        const withActs = plugins.filter(p => Array.isArray(p.actions) && p.actions.length);
-        const sortPlugins = withActs.slice().sort((a, b) => { const ap = pins.includes(a.id) ? 1 : 0; const bp = pins.includes(b.id) ? 1 : 0; if (ap !== bp) return bp - ap; return String(a.name || a.id).localeCompare(String(b.name || b.id)); });
+        // Filter out components (optional: keep if needed, but user requested 'only show plugins')
+        // Usually components have type='component'. Plugins have type='plugin'.
+        const visiblePlugins = plugins.filter(p => p.enabled !== false && String(p.type||'').toLowerCase() !== 'component' && Array.isArray(p.actions) && p.actions.length > 0);
+        const sortPlugins = visiblePlugins.slice().sort((a, b) => { const ap = pins.includes(a.id) ? 1 : 0; const bp = pins.includes(b.id) ? 1 : 0; if (ap !== bp) return bp - ap; return String(a.name || a.id).localeCompare(String(b.name || b.id)); });
         sortPlugins.forEach((p) => {
             const acts = Array.isArray(p.actions) ? p.actions : [];
-            if (!acts.length) return;
             const cell = document.createElement('div');
             cell.className = 'cell';
             const nm = String(p.name || p.id || '').trim();
@@ -64,7 +65,22 @@ async function load() {
                     const overlay = document.createElement('div');
                     overlay.style.position = 'fixed'; overlay.style.inset = '0'; overlay.style.background = 'rgba(6,12,24,0.6)'; overlay.style.backdropFilter = 'blur(6px)'; overlay.style.zIndex = '9999'; overlay.style.padding = '12px'; overlay.style.boxSizing = 'border-box';
                     const panel = document.createElement('div'); panel.style.maxHeight = '70vh'; panel.style.overflow = 'hidden'; panel.style.border = '1px solid rgba(255,255,255,0.2)'; panel.style.borderRadius = '8px'; panel.style.background = 'rgba(16,24,36,0.8)'; panel.style.padding = '12px'; panel.style.width = 'min(480px, 92vw)'; panel.style.margin = '0 auto'; panel.style.boxSizing = 'border-box';
-                    const title = document.createElement('div'); title.innerHTML = `<span style="color:#e6f0ff;">选择动作：${nm}</span>`; title.style.marginTop = '8px';
+                    const title = document.createElement('div'); title.innerHTML = `<span style="color:#e6f0ff;">${nm}</span>`; title.style.marginTop = '8px';
+                    
+                    // Always show description if available
+                    if (p.description) {
+                        const desc = document.createElement('div');
+                        desc.style.color = '#8899aa'; desc.style.fontSize = '12px'; desc.style.margin = '4px 0 12px 0';
+                        desc.style.lineHeight = '1.4';
+                        desc.innerText = p.description;
+                        panel.appendChild(desc);
+                    } else if (!acts.length) {
+                        const desc = document.createElement('div');
+                        desc.style.color = '#8899aa'; desc.style.fontSize = '12px'; desc.style.margin = '8px 0';
+                        desc.innerText = '暂无可用动作';
+                        panel.appendChild(desc);
+                    }
+
                     const close = document.createElement('div'); close.style.textAlign = 'right'; close.innerHTML = '<button class="btn"><i class="ri-close-line"></i><span>关闭</span></button>';
                     const listEl = document.createElement('div'); listEl.style.display = 'flex'; listEl.style.flexDirection = 'column'; listEl.style.gap = '8px'; listEl.style.marginTop = '8px';
                     const pinRow = document.createElement('button'); pinRow.className = 'btn'; pinRow.style.justifyContent = 'space-between'; pinRow.innerHTML = `<span style="display:flex;align-items:center;gap:8px;"><i class="${isPinned ? 'ri-pushpin-fill' : 'ri-pushpin-line'}"></i>${isPinned ? '取消置顶' : '置顶'}</span><i class="ri-arrow-right-s-line"></i>`;
@@ -84,12 +100,32 @@ async function load() {
                     close.onclick = () => { try { document.body.removeChild(overlay) } catch (e) { } };
                 } catch (e) { }
             };
-            cell.addEventListener('mousedown', () => { longPressed = false; clearPress(); pressTimer = setTimeout(() => { longPressed = true; showActionsOverlay(); }, 600); });
-            cell.addEventListener('mouseup', async () => { const wasLong = longPressed; clearPress(); if (!wasLong) { await callActionByIndex(0); try { await window.compassAPI.pluginCall('screen-compass', 'closeApplicationsWindow', []); } catch (e) { } } });
+            cell.addEventListener('mousedown', (e) => { 
+                if (e.button !== 0) return; // Only process long press on Left Click
+                longPressed = false; 
+                clearPress(); 
+                pressTimer = setTimeout(() => { longPressed = true; showActionsOverlay(); }, 600); 
+            });
+            cell.addEventListener('mouseup', async (e) => { 
+                if (e.button !== 0) return; // Ignore right click mouseup (handled by contextmenu)
+                const wasLong = longPressed; 
+                clearPress(); 
+                if (!wasLong) { 
+                    if (acts.length > 0) {
+                        await callActionByIndex(0); 
+                        try { await window.compassAPI.pluginCall('screen-compass', 'closeApplicationsWindow', []); } catch (e) { } 
+                    } else {
+                        showActionsOverlay();
+                    }
+                } 
+            });
             cell.addEventListener('mouseleave', () => { clearPress(); });
             cell.addEventListener('contextmenu', (e) => { try { e.preventDefault(); } catch (e) { } showActionsOverlay(); });
             grid.appendChild(cell);
         });
+
+
+
         updateArrows();
     } catch (e) { }
 }

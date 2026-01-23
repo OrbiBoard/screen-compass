@@ -598,15 +598,46 @@ const functions = {
   },
 
   // Keep required exports
-  listPlugins: () => { try { const pm = require(path.join(app.getAppPath(), 'src', 'main', 'pluginManager.js')); return pm.getPlugins(); } catch (e) { return []; } },
-  listAutomationEvents: (pluginId) => { try { const pm = require(path.join(app.getAppPath(), 'src', 'main', 'pluginManager.js')); const res = pm.listAutomationEvents(pluginId); return (res && res.ok && Array.isArray(res.events)) ? res.events : []; } catch (e) { return []; } },
-  listInstalledApps: () => {
+  listPlugins: () => { 
+    try { 
+      // Try new path structure first
+      let pmPath = path.join(app.getAppPath(), 'src', 'main', 'Manager', 'Plugins', 'Main.js');
+      if (!fs.existsSync(pmPath)) {
+          // Fallback to old path
+          pmPath = path.join(app.getAppPath(), 'src', 'main', 'pluginManager.js');
+      }
+      const pm = require(pmPath); 
+      return pm.getPlugins(); 
+    } catch (e) { 
+      console.error('Failed to list plugins:', e);
+      return []; 
+    } 
+  },
+  listAutomationEvents: (pluginId) => { 
+    try { 
+      let pmPath = path.join(app.getAppPath(), 'src', 'main', 'Manager', 'Plugins', 'Main.js');
+      if (!fs.existsSync(pmPath)) pmPath = path.join(app.getAppPath(), 'src', 'main', 'pluginManager.js');
+      const pm = require(pmPath); 
+      const res = pm.listAutomationEvents(pluginId); 
+      return (res && res.ok && Array.isArray(res.events)) ? res.events : []; 
+    } catch (e) { return []; } 
+  },
+  listInstalledApps: async () => {
     // (Copy existing implementation or minimal version)
     try {
       if (process.platform !== 'win32') return [];
       const now = Date.now();
       if (__appsCache.list.length && (now - __appsCache.ts) < 600000) return __appsCache.list.slice(0, 300);
-      if (!__appsCache.building) { __appsCache.building = true; buildAppsCache().finally(() => { __appsCache.building = false; }); }
+      
+      if (!__appsCache.list.length) {
+         // First time or empty, wait for build
+         await buildAppsCache();
+      } else if (!__appsCache.building) {
+         // Background refresh
+         __appsCache.building = true; 
+         buildAppsCache().finally(() => { __appsCache.building = false; }); 
+      }
+      
       return __appsCache.list.slice(0, 120);
     } catch (e) { return []; }
   },
