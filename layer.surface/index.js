@@ -36,7 +36,20 @@ function updateCenterIcon() {
   } catch (e) { console.error(e); }
 }
 
+function updateShape() {
+    try {
+        // Calculate the center circle rect
+        // The window is resized to totalSize = centerSize + 24
+        // The button is centered, size = centerSize
+        // So offset is (totalSize - centerSize) / 2 = 12
+        const offset = 12;
+        const rect = { x: offset, y: offset, width: centerSize, height: centerSize };
+        window.compassAPI.pluginCall('screen-compass', 'setWindowShape', ['surface', [rect]]);
+    } catch (e) {}
+}
+
 try {
+  window.compassAPI.subscribe('screen-compass-channel');
   // 接收插件信息
   window.compassAPI.onEvent((name, payload) => {
     if (name === 'screen-compass-channel' && payload) {
@@ -44,16 +57,19 @@ try {
             if (payload.centerSize) centerSize = Math.max(32, Math.min(160, Number(payload.centerSize) || centerSize));
             if (payload.centerIcon) centerIcon = String(payload.centerIcon) || centerIcon;
             updateCenterIcon();
+            updateShape();
         }
         if (payload.type === 'menu.toggle') {
             isExpanded = !!payload.expanded;
             if (payload.theme) currentTheme = payload.theme;
             updateCenterIcon();
+            updateShape();
         }
     }
     if (name === 'menu-state') {
         isExpanded = !!payload.expanded;
         updateCenterIcon();
+        updateShape();
     }
   });
 } catch (e) {}
@@ -74,5 +90,6 @@ try {
     } catch(e){}
 
     updateCenterIcon();
+    setTimeout(updateShape, 100);
   } catch(e) {}
 })();

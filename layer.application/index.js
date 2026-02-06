@@ -77,6 +77,29 @@ async function loadItems() {
   } catch (e) {}
 }
 
+function updateWindowShape() {
+  try {
+    const rects = [];
+    if (theme === 'sector' || theme === 'classic') {
+         const ring = document.getElementById('ring');
+         if (ring && !ring.classList.contains('hidden')) {
+             const items = ring.children;
+             for (let i=0; i<items.length; i++) {
+                 const r = items[i].getBoundingClientRect();
+                 rects.push({ x: r.left, y: r.top, width: r.width, height: r.height });
+             }
+         }
+    } else {
+         const hTrayBg = document.getElementById('hTrayBg');
+         if (expanded && hTrayBg && hTrayBg.style.display !== 'none') {
+             const r = hTrayBg.getBoundingClientRect();
+             rects.push({ x: r.left, y: r.top, width: r.width, height: r.height });
+         }
+    }
+    window.compassAPI.pluginCall('screen-compass', 'setWindowShape', ['application', rects]);
+  } catch (e) {}
+}
+
 function placeItems() {
   ring.innerHTML = '';
   const rootEl = document.getElementById('root');
@@ -161,22 +184,22 @@ function placeItems() {
     bgWidth = centerSize + 24 + totalW + bgPadH * 2;
     
     if (dir < 0) { // hleft (tray to left of center)
-       // Center is at cx. Tray ends at cx - centerSize/2 - margin
-       trayLeft = cx - Math.round(centerSize/2) - 12 - totalW;
-       bgLeft = trayLeft - bgPadH;
+       // Center is at centerX. Tray ends at centerX - 12
+       trayLeft = centerX - 12 - totalW;
+       bgLeft = trayLeft - bgPadH - 12;
        hTray.style.justifyContent = 'flex-end';
        hTray.style.paddingRight = '8px'; // Add padding near button
        hTray.style.paddingLeft = '0px';
     } else { // hright
-       trayLeft = cx + Math.round(centerSize/2) + 12;
-       bgLeft = cx - Math.round(centerSize/2) - 12 - bgPadH; 
+       trayLeft = centerX + centerSize + 12;
+       bgLeft = centerX - 12 - bgPadH - 12; 
        hTray.style.justifyContent = 'flex-start';
        hTray.style.paddingLeft = '8px'; // Add padding near button
        hTray.style.paddingRight = '0px';
     }
     
-    hTray.style.left = trayLeft + 'px';
-    hTray.style.top = trayTop + 'px';
+    hTray.style.left = (trayLeft + 3) + 'px';
+    hTray.style.top = (trayTop + 1) + 'px';
     hTray.style.height = trayHeight + 'px';
     // Increase tray width to accommodate padding without shrinking content?
     // Box-sizing is not set for htray, so padding adds to width.
@@ -304,6 +327,7 @@ function placeItems() {
           dragHint.style.width = 'max-content';
       }
   }
+  setTimeout(updateWindowShape, 50);
 }
 
 function __fadeSet(el, v){ try { if (!el) return; el.style.transition = 'opacity .16s ease'; el.style.opacity = String(v); } catch (e) {} }
