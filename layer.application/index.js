@@ -231,8 +231,8 @@ function placeItems() {
         if (!expanded) return;
         const isApp = String(it.actionType||'')==='app';
         try {
-          if (isApp && appActive) { await window.compassAPI.pluginCall('screen-compass','closeApplicationsWindow',[]); }
-          else { await window.compassAPI.pluginCall('screen-compass', 'performAction', [it]); }
+          // Fixed: closeApplicationsWindow is removed, performAction toggles launcher
+          await window.compassAPI.pluginCall('screen-compass', 'performAction', [it]);
         } catch (e) {}
       });
       hTray.appendChild(div);
@@ -250,8 +250,8 @@ function placeItems() {
         if (!expanded) return;
         const isApp = String(it.actionType||'')==='app';
         try {
-          if (isApp && appActive) { await window.compassAPI.pluginCall('screen-compass','closeApplicationsWindow',[]); }
-          else { await window.compassAPI.pluginCall('screen-compass', 'performAction', [it]); }
+          // Fixed: closeApplicationsWindow is removed, performAction toggles launcher
+          await window.compassAPI.pluginCall('screen-compass', 'performAction', [it]);
         } catch (e) {}
         try { setExpanded(false); } catch (e) {}
       });

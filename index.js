@@ -2,6 +2,11 @@ const path = require('path');
 const url = require('url');
 const { BrowserWindow, app, screen, nativeImage, shell, ipcMain } = require('electron');
 
+let user32 = null;
+let GetForegroundWindow = null;
+let SetForegroundWindow = null;
+let lastExternalWindowHandle = null;
+
 let __dragLogs = [];
 function addDragLog(msg) {
   if (__dragLogs.length > 500) __dragLogs.shift();
@@ -88,8 +93,8 @@ function createWindows() {
     const b = d.bounds;
 
     // --- Drag Window (Button) ---
-    // User Request 5: Default size 48px
-    const w = 48, h = 48, mr = 24, mb = 32;
+    // User Request 5: Default size 48px -> Fixed: 80px to avoid clipping
+    const w = 80, h = 80, mr = 24, mb = 32;
     state.dragWinSize = w;
     const isLinux = process.platform === 'linux';
 
@@ -213,15 +218,12 @@ function createWindows() {
               // dragWin will naturally lose focus to menuWin
             } else {
               // If CLOSED, we MUST force dragWin to lose focus so next click triggers 'focus' again.
-              // Since we can't focus desktop, we try to focus a dummy window then close it,
-              // or focus the main app window if available (but it might be hidden).
-              // Try focusing menuWin then hiding it? No, already hidden.
-              // Hack: Blur dragWin.
-              dragWin.blur();
-              // If blur doesn't work (Windows keeps focus), we are in trouble.
-              // Let's try to focus Shell/Desktop by minimizing and restoring? No.
-              // Let's try to create a dummy transparent window.
-              createDummyFocusStealer();
+              if (SetForegroundWindow && lastExternalWindowHandle) {
+                SetForegroundWindow(lastExternalWindowHandle);
+              } else {
+                dragWin.blur();
+                createDummyFocusStealer();
+              }
             }
           }
         }, 150);
@@ -336,6 +338,12 @@ const functions = {
       }
 
       pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: false, theme: state.lastTheme || 'classic' });
+
+      // Restore focus to external window
+      if (SetForegroundWindow && lastExternalWindowHandle) {
+        try { SetForegroundWindow(lastExternalWindowHandle); } catch (e) { }
+      }
+
       return true;
     } catch (e) { return false; }
   },
@@ -371,17 +379,17 @@ const functions = {
       let win = null;
       if (type === 'surface') win = dragWin;
       else if (type === 'application') win = menuWin;
-      
+
       if (win && !win.isDestroyed()) {
         if (!Array.isArray(rects) || rects.length === 0) {
-           win.setShape([]); 
+          win.setShape([]);
         } else {
-           // Ensure integers
-           const safeRects = rects.map(r => ({
-             x: Math.round(r.x), y: Math.round(r.y), 
-             width: Math.round(r.width), height: Math.round(r.height)
-           }));
-           win.setShape(safeRects);
+          // Ensure integers
+          const safeRects = rects.map(r => ({
+            x: Math.round(r.x), y: Math.round(r.y),
+            width: Math.round(r.width), height: Math.round(r.height)
+          }));
+          win.setShape(safeRects);
         }
         return true;
       }
@@ -442,17 +450,17 @@ const functions = {
       const type = String(b.actionType || '').trim();
       const payload = b.actionPayload || {};
       if (type === 'app') {
-        try { 
-            if (pluginApi && pluginApi.launcher) {
-                // Pass current dragWin bounds to the launcher for positioning
-                let bounds = null;
-                if (dragWin && !dragWin.isDestroyed()) {
-                    bounds = dragWin.getBounds();
-                }
-                pluginApi.launcher.open({ bounds, type: 'compass' });
-                return true;
+        try {
+          if (pluginApi && pluginApi.launcher) {
+            // Pass current dragWin bounds to the launcher for positioning
+            let bounds = null;
+            if (dragWin && !dragWin.isDestroyed()) {
+              bounds = dragWin.getBounds();
             }
-            return false;
+            pluginApi.launcher.open({ bounds, type: 'compass' });
+            return true;
+          }
+          return false;
         } catch (e) { return { ok: false, error: e?.message || String(e) }; }
       }
       if (type === 'plugin') {
@@ -592,6 +600,46 @@ const init = async (api) => {
     if (!pluginApi.log) {
       pluginApi.log = (msg) => { try { pluginApi.logWrite('info', String(msg || '')); } catch (e) { } };
     }
+    
+    // Initialize Native Utils via Plugin API (to avoid require('koffi') failure)
+    if (pluginApi.native && pluginApi.native.koffi) {
+        const koffi = pluginApi.native.koffi;
+        try {
+            user32 = koffi.load('user32.dll');
+            GetForegroundWindow = user32.func('void *GetForegroundWindow()');
+            SetForegroundWindow = user32.func('bool SetForegroundWindow(void *hwnd)');
+            
+            // Track focus
+            setInterval(() => {
+              try {
+                if (!GetForegroundWindow) return;
+                const hwnd = GetForegroundWindow();
+                if (!hwnd) return;
+                
+                // Check if it is our window
+                let isOurs = false;
+                const check = (win) => {
+                  if (win && !win.isDestroyed()) {
+                    const h = win.getNativeWindowHandle();
+                    // Compare addresses (BigInt)
+                    if (koffi.address(hwnd) === koffi.address(h)) return true;
+                  }
+                  return false;
+                };
+                
+                if (check(dragWin) || check(menuWin)) isOurs = true;
+                
+                if (!isOurs) {
+                  lastExternalWindowHandle = hwnd;
+                }
+              } catch (e) { }
+            }, 250);
+            
+        } catch (e) { 
+            pluginApi.log('Native Init Failed: ' + e.message);
+        }
+    }
+    
   } catch (e) { }
   const ready = () => { functions.createWindows(); };
   if (app.isReady()) ready(); else app.once('ready', ready);

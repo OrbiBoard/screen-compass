@@ -7,7 +7,8 @@ let currentTheme = 'sector'; // 主题标识
 // 更新中心按钮图标
 function updateCenterIcon() {
   try {
-    const totalSize = centerSize + 24; 
+    // Fixed: Increase buffer to avoid shadow clipping (shadow needs ~16px at bottom)
+    const totalSize = centerSize + 40; 
     try { window.compassAPI.pluginCall('screen-compass', 'resizeDragWin', [totalSize, totalSize]); } catch(e){}
 
     center.style.width = centerSize + 'px';
@@ -39,10 +40,9 @@ function updateCenterIcon() {
 function updateShape() {
     try {
         // Calculate the center circle rect
-        // The window is resized to totalSize = centerSize + 24
-        // The button is centered, size = centerSize
-        // So offset is (totalSize - centerSize) / 2 = 12
-        const offset = 12;
+        // The window is resized to totalSize = centerSize + 40
+        const totalSize = centerSize + 40;
+        const offset = Math.floor((totalSize - centerSize) / 2);
         const rect = { x: offset, y: offset, width: centerSize, height: centerSize };
         window.compassAPI.pluginCall('screen-compass', 'setWindowShape', ['surface', [rect]]);
     } catch (e) {}
