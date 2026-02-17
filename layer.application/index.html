@@ -5,7 +5,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>屏幕罗盘</title>
-    <link rel="stylesheet" href="../../../renderer/remixicon-local.css" />
+    <!-- Fix path to remixicon -->
+    <link rel="stylesheet" href="../../../OrbiBoard/src/renderer/remixicon-local.css" />
     <link rel="stylesheet" href="index.css" />
   </head>
   <body>
@@ -17,7 +18,9 @@
         <div class="hbg" id="hTrayBg"></div>
         <div class="htray" id="hTray"></div>
         <!-- Center button -->
-        <div class="center-btn" id="center" style="display:none !important;"><i class="ri-compass-3-line"></i></div>
+        <div class="center-btn" id="center">
+          <i class="ri-compass-3-line"></i>
+        </div>
       </div>
       <div id="drag-hint" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); color: white; padding: 4px 12px; border-radius: 4px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity 0.2s;">
         点击主按钮收起即可开始拖动

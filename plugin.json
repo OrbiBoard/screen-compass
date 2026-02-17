@@ -58,6 +58,7 @@
     }
   },
   "dependencies": [
-    "ui-lowbar"
+    "ui-lowbar",
+    "service.toplayer"
   ]
 }

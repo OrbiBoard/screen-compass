@@ -3,33 +3,119 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Compass Drag</title>
+    <title>Compass</title>
     <link rel="stylesheet" href="../../../renderer/remixicon-local.css" />
     <style>
+      /* --- Merged CSS from layer.application/index.css & layer.surface --- */
       html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
-      body { display: flex; align-items: center; justify-content: center; }
+      body { display: flex; align-items: center; justify-content: center; user-select: none; -webkit-user-select: none; }
+      
+      .root {
+        width: 100%; height: 100%; position: relative;
+        display: flex; align-items: center; justify-content: center;
+        pointer-events: none; /* Default pass-through */
+      }
+      
+      /* Interactive elements capture events */
+      .sectors, .ring, .htray, .hbg, .circle-bg, .center-btn { pointer-events: auto; }
+      
+      /* Center Button */
       .center-btn {
-        width: 48px;
-        height: 48px;
+        width: 50px; height: 50px;
         border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
         background: rgba(30, 30, 30, 0.95);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.30);
+        cursor: grab; /* Default to grab for dragging */
         color: rgba(255, 255, 255, 0.9);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-        -webkit-app-region: drag;
-        cursor: pointer;
+        z-index: 100;
         transition: all 0.2s ease;
-        overflow: hidden;
+        position: relative;
       }
-      .center-btn:active { transform: scale(0.96); }
+      .center-btn:active { transform: scale(0.96); cursor: grabbing; }
+      .center-btn i { font-size: 24px; color: #fff; }
+      
+      /* Ring & Items */
+      .ring { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 2; }
+      
+      .item {
+        box-sizing: border-box;
+        width: 44px; height: 58px;
+        border-radius: 12px;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+        background: rgba(20, 28, 40, 0.52);
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        pointer-events: auto; cursor: pointer;
+        transition: opacity .2s ease, transform .2s ease;
+      }
+      .item:hover { transform: scale(1.06); }
+      .item.active { background: rgba(64, 128, 255, 0.28); border: 1px solid rgba(64, 128, 255, 0.42); }
+      .item i { font-size: 22px; color: #e6f0ff; }
+      .item .label { font-size: 11px; line-height: 12px; color: #e6f0ff; opacity: 0.88; max-width: 64px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      
+      .hidden { opacity: 0; transform: scale(0.6); pointer-events: none; }
+      
+      /* Sectors (SVG) */
+      .sectors { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+      .wedge { transition: opacity .2s ease; }
+      
+      /* Backgrounds */
+      .circle-bg {
+        position: absolute; inset: 0; border-radius: 50%;
+        background: rgba(20, 28, 40, 0.28); border: 1px solid rgba(255, 255, 255, 0.18);
+        pointer-events: auto; z-index: 0;
+        -webkit-mask: radial-gradient(transparent 26px, black 27px);
+        mask: radial-gradient(transparent 26px, black 27px);
+        opacity: 0; transition: opacity 0.2s ease;
+      }
+      
+      /* Classic Theme overrides */
+      .classic .circle-bg { opacity: 0 !important; }
+      .classic .item { background: transparent; border: none; height: 58px; width: 56px; }
+      .classic .item .dot {
+        width: 52px; height: 52px; border-radius: 50%;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+        background: rgba(20, 28, 40, 0.62); border: 1px solid rgba(255, 255, 255, 0.30);
+      }
+      .classic .item i { font-size: 19px; }
+      .classic .item .label { max-width: 48px; margin: 0; }
+      
+      /* Sector Theme overrides */
+      .sector .circle-bg { opacity: 1; }
+      .sector .item { background: transparent; border: none; }
+      
+      /* Horizontal Tray */
+      .htray { position: absolute; display: none; height: 58px; align-items: center; gap: 8px; pointer-events: auto; z-index: 3; transition: all .22s ease; box-sizing: border-box; }
+      .htray .item { background: transparent; border: none; width: 56px; position: relative; }
+      .htray .item:hover, .htray .item:active { background: rgba(20, 28, 40, 0.52); border: 1px solid rgba(255, 255, 255, 0.28); transform: none; }
+      .htray .item .label { max-width: 56px; }
+      
+      .hbg { position: absolute; z-index: 2; pointer-events: none; background: transparent; transition: all .22s ease; border-radius: 28px; }
+      
+      /* Drag Hint */
+      #drag-hint {
+        position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+        background: rgba(0,0,0,0.6); color: white; padding: 4px 12px; border-radius: 4px;
+        font-size: 12px; pointer-events: none; opacity: 0; transition: opacity 0.2s;
+        white-space: nowrap; z-index: 200;
+      }
     </style>
   </head>
   <body>
-    <div class="center-btn" id="center">
-      <i class="ri-compass-3-line"></i>
+    <div class="root" id="root">
+      <div id="compass-container" style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+        <div class="circle-bg" id="circleBg"></div>
+        <div class="sectors" id="sectors"></div>
+        <div class="ring" id="ring"></div>
+        <div class="hbg" id="hTrayBg"></div>
+        <div class="htray" id="hTray"></div>
+        <!-- Center button -->
+        <div class="center-btn" id="center">
+          <i class="ri-compass-3-line"></i>
+        </div>
+      </div>
+      <div id="drag-hint">点击主按钮收起即可开始拖动</div>
     </div>
     <script src="index.js"></script>
   </body>

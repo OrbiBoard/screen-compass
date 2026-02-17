@@ -1,23 +1,11 @@
 const path = require('path');
 const url = require('url');
 const { BrowserWindow, app, screen, nativeImage, shell, ipcMain } = require('electron');
-
-let user32 = null;
-let GetForegroundWindow = null;
-let SetForegroundWindow = null;
-let lastExternalWindowHandle = null;
-
-let __dragLogs = [];
-function addDragLog(msg) {
-  if (__dragLogs.length > 500) __dragLogs.shift();
-  __dragLogs.push(`[${new Date().toLocaleTimeString()}.${String(Date.now() % 1000).padStart(3, '0')}] ${msg}`);
-}
-
-// Helper for shortcut resolution
 const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
 const fsp = fs.promises;
 
+// --- Helper Functions ---
 function resolveShortcutTarget(p) {
   try {
     const fp = String(p || ''); if (!fp || process.platform !== 'win32') return '';
@@ -31,373 +19,287 @@ function resolveShortcutTarget(p) {
   } catch (e) { return ''; }
 }
 
-let pluginApi = null;
-let dragWin = null;
-let menuWin = null;
+let __appsCache = { ts: 0, list: [], building: false };
+async function buildAppsCache() {
+  try {
+    if (process.platform !== 'win32') { __appsCache.list = []; __appsCache.ts = Date.now(); return; }
+    const roots = [
+      path.join(String(process.env['ProgramData'] || ''), 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
+      path.join(String(process.env['AppData'] || ''), 'Microsoft', 'Windows', 'Start Menu', 'Programs')
+    ].filter(p => p && fs.existsSync(p));
+    const out = [];
+    const seen = new Set();
+    const isExe = (p) => String(p || '').toLowerCase().endsWith('.exe');
+    const isLnk = (p) => String(p || '').toLowerCase().endsWith('.lnk');
+    const pushApp = (p) => { try { const key = String(p || '').toLowerCase(); if (!key) return; if (seen.has(key)) return; seen.add(key); const nm = path.basename(p, path.extname(p)); out.push({ name: nm, path: p }); } catch (e) { } };
+    const walk = async (dir, depth) => {
+      try {
+        const ents = await fsp.readdir(dir, { withFileTypes: true });
+        for (const d of ents) {
+          const p1 = path.join(dir, d.name);
+          if (d.isFile() && (isExe(p1) || isLnk(p1))) { pushApp(p1); continue; }
+          if (d.isDirectory() && depth < 2) { await walk(p1, depth + 1); }
+        }
+      } catch (e) { }
+    };
+    for (const r of roots) { await walk(r, 0); }
+    __appsCache.list = out.slice(0, 800);
+    __appsCache.ts = Date.now();
+  } catch (e) { __appsCache.list = []; __appsCache.ts = Date.now(); }
+}
 
-function emitUpdate(target, value) { try { pluginApi.emit(state.eventChannel, { type: 'update', target, value }); } catch (e) { } }
+// --- Plugin State & Service ---
+const SERVICE_ID = 'service.toplayer';
+let pluginApi = null;
+let appWin = null; // Independent launcher window
 
 const state = {
   eventChannel: 'screen-compass-channel',
-  dragging: false,
-  dragOffsetX: 0,
-  dragOffsetY: 0,
-  dragStartWinX: 0,
-  dragStartWinY: 0,
-  dragInputType: 'mouse',
-  menuExpanded: false,
+  widgetId: 'screen-compass-main', // Unified widget ID
   menuWidth: 240,
   menuHeight: 240,
-  menuCenterX: 120, // Offset of center from top-left
-  menuCenterY: 120,
-  dragWinSize: 50,
-  touchLogLastTs: 0,
-  lastMoveTs: Date.now(),
-  isStartup: true // Flag to ignore initial focus
+  menuExpanded: false,
+  dragWinSize: 48, // Button size
+  lastTheme: 'classic',
+  dragStartPos: null, // To detect click vs drag
+  lastWidgetPos: { x: 0, y: 0 } // Cache for positioning
 };
 
-function syncMenuPos() {
+function emitUpdate(target, value) { try { pluginApi.emit(state.eventChannel, { type: 'update', target, value }); } catch (e) { } }
+
+// --- Widget Management ---
+
+async function initWidgets() {
   try {
-    if (!dragWin || dragWin.isDestroyed()) return;
-    if (!menuWin || menuWin.isDestroyed()) return;
-
-    const b = dragWin.getBounds();
-    // Center of dragWin
-    const cx = b.x + Math.floor(b.width / 2);
-    const cy = b.y + Math.floor(b.height / 2);
-
-    // We want to align menuWin's ANCHOR point to (cx, cy).
-    // menuWin TopLeft = (cx - anchorX, cy - anchorY)
-
-    const ax = (state.menuAnchorX !== undefined) ? state.menuAnchorX : Math.floor(state.menuWidth / 2);
-    const ay = (state.menuAnchorY !== undefined) ? state.menuAnchorY : Math.floor(state.menuHeight / 2);
-
-    const mx = cx - ax;
-    const my = cy - ay;
-
-    menuWin.setBounds({
-      x: mx,
-      y: my,
-      width: state.menuWidth,
-      height: state.menuHeight
-    });
-  } catch (e) { }
-}
-
-function createWindows() {
-  try {
-    if (dragWin && !dragWin.isDestroyed()) return;
-
+    // 1. Calculate Initial Position
     const pt = screen.getCursorScreenPoint ? screen.getCursorScreenPoint() : { x: 0, y: 0 };
     const d = screen.getDisplayNearestPoint ? screen.getDisplayNearestPoint(pt) : screen.getPrimaryDisplay();
     const b = d.bounds;
 
-    // --- Drag Window (Button) ---
-    // User Request 5: Default size 48px -> Fixed: 80px to avoid clipping
-    const w = 80, h = 80, mr = 24, mb = 32;
-    state.dragWinSize = w;
-    const isLinux = process.platform === 'linux';
+    const w = state.dragWinSize, h = state.dragWinSize, mr = 24, mb = 32;
+    const dragX = b.x + b.width - w - mr;
+    const dragY = b.y + b.height - h - mb;
+    state.lastWidgetPos = { x: dragX, y: dragY };
 
-    dragWin = new BrowserWindow({
-      x: b.x + b.width - w - mr,
-      y: b.y + b.height - h - mb,
-      width: w,
-      height: h,
-      useContentSize: true,
-      frame: false,
-      transparent: true,
-      backgroundColor: '#00000000',
-      show: true,
-      resizable: false,
-      movable: true, // Native drag allowed
-      minimizable: false,
-      maximizable: false,
-      fullscreenable: false,
-      skipTaskbar: true,
-      alwaysOnTop: true,
-      focusable: true,
-      hasShadow: false,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js')
-      }
-    });
+    // 2. Add Unified Widget (Application Layer + Surface Button)
+    // Initially Collapsed (Button size)
+    // Wrap options in array to ensure correct argument passing
+    await pluginApi.call(SERVICE_ID, 'addWidget', [{
+      id: state.widgetId,
+      url: url.pathToFileURL(path.join(__dirname, 'layer.application', 'index.html')).href,
+      x: dragX, y: dragY, width: w, height: h,
+      preload: path.join(__dirname, 'preload.js')
+    }]);
 
-    dragWin.loadFile(path.join(__dirname, 'layer.surface', 'index.html'));
+    // Notify initial state
+    pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: false, theme: state.lastTheme || 'classic' });
 
-    try { dragWin.setAlwaysOnTop(true, 'screen-saver'); } catch (e) { }
-    try { dragWin.setVisibleOnAllWorkspaces(true); } catch (e) { }
+  } catch (e) { console.error('[ScreenCompass] initWidgets failed:', e); }
+}
 
-    // 应用层
-    menuWin = new BrowserWindow({
-      width: state.menuWidth || 240,
-      height: state.menuHeight || 240,
-      frame: false,
-      transparent: true,
-      backgroundColor: '#00000000',
-      show: false, // Hidden initially
-      resizable: false,
-      movable: false, // Moved by code
-      minimizable: false,
-      maximizable: false,
-      skipTaskbar: true,
-      alwaysOnTop: true, // Below dragWin ideally. 
-      focusable: true,
-      hasShadow: false,
-      type: 'toolbar', // Use toolbar type to help with Z-order
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js')
-      }
-    });
-
-    menuWin.loadFile(path.join(__dirname, 'layer.application', 'index.html'));
-
-    // 层级调整
-    const maintainZOrder = () => {
-      try {
-        if (menuWin && !menuWin.isDestroyed()) {
-          menuWin.setAlwaysOnTop(true, 'screen-saver');
+async function updateWidgetSize() {
+    try {
+        const isExpanded = state.menuExpanded;
+        const w = isExpanded ? state.menuWidth : state.dragWinSize;
+        const h = isExpanded ? state.menuHeight : state.dragWinSize;
+        
+        // When expanded, we need to recenter the widget so the button stays in place relative to mouse/screen?
+        // Actually, the button is usually at the center of the menu.
+        // So if we expand, the top-left corner (x,y) must change.
+        
+        // Button center:
+        const cx = state.lastWidgetPos.x + Math.floor(state.dragWinSize / 2);
+        const cy = state.lastWidgetPos.y + Math.floor(state.dragWinSize / 2);
+        
+        let nx, ny;
+        if (isExpanded) {
+            // Expand around center
+            nx = cx - Math.floor(w / 2);
+            ny = cy - Math.floor(h / 2);
+        } else {
+            // Collapse to button size (top-left should align with center - half button)
+            // Wait, lastWidgetPos tracks the TOP-LEFT of the CURRENT widget state?
+            // If we collapse, we want the button to stay where the center was.
+            // But lastWidgetPos is updated by drag events.
+            
+            // Let's assume lastWidgetPos is always the TOP-LEFT of the VISIBLE widget.
+            // If we expand:
+            // Old TopLeft = lastWidgetPos
+            // Old Center = Old TopLeft + dragWinSize/2
+            // New Width = menuWidth
+            // New TopLeft = Old Center - menuWidth/2
+            
+            // If we collapse:
+            // Old TopLeft = lastWidgetPos (which is the expanded menu top-left)
+            // Old Center = Old TopLeft + menuWidth/2
+            // New Width = dragWinSize
+            // New TopLeft = Old Center - dragWinSize/2
+            
+            // So logic is consistent.
+            
+            // However, we need to know if we are CURRENTLY expanded to calculate center correctly.
+            // state.menuExpanded is the TARGET state.
+            // We should use the PREVIOUS state to calculate center?
+            // Or just rely on the fact that `lastWidgetPos` is the current position.
+            
+            // Actually, `state.lastWidgetPos` is updated on DRAG END.
+            // If we toggle without dragging, `lastWidgetPos` is the current top-left.
+            // BUT, if we toggle, we change size AND position.
+            
+            // Let's refine `lastWidgetPos`.
+            // Let's track `centerPos` instead? No, widget system uses x,y.
+            
+            // Problem: If I am collapsed (48x48) at (100,100). Center is (124,124).
+            // I click -> Expand.
+            // New size 240x240. New x = 124 - 120 = 4. New y = 124 - 120 = 4.
+            // `updateWidget` sends x=4, y=4, w=240, h=240.
+            // `state.lastWidgetPos` becomes (4,4).
+            
+            // I click center -> Collapse.
+            // Current pos (4,4). Size 240. Center = 4+120=124.
+            // New size 48. New x = 124 - 24 = 100.
+            // `updateWidget` sends x=100, y=100, w=48, h=48.
+            // `state.lastWidgetPos` becomes (100,100).
+            
+            // This logic works IF we know the CURRENT size.
+            // `state.menuExpanded` is the NEW state.
+            // So we need `wasExpanded` or derive it.
         }
-        if (dragWin && !dragWin.isDestroyed()) {
-          dragWin.setAlwaysOnTop(true, 'screen-saver');
-        }
-      } catch (e) { }
-    };
-    maintainZOrder();
-
-    // --- Event Handling ---
-
-    let focusStartPos = null;
-    let focusMoved = false;
-
-    // 1. Drag Window Move Event
-    dragWin.on('move', () => {
-      focusMoved = true;
-      state.lastMoveTs = Date.now();
-      syncMenuPos();
-    });
-
-    // 2. Focus Logic (Smart Click)
-    // User Request 6: "When dragWin gets focus... if drag position is small determine as open... immediately let app layer focus"
-
-    let lastToggleTime = 0;
-
-    dragWin.on('focus', () => {
-      try {
-        if (!dragWin || dragWin.isDestroyed()) return;
-
-        const now = Date.now();
-        if (now - lastToggleTime < 300) return; // Debounce
-
-        focusStartPos = dragWin.getBounds();
-        focusMoved = false;
-
-        // Wait to distinguish click from drag start
-        setTimeout(async () => {
-          if (!dragWin || dragWin.isDestroyed()) return;
-
-          // If moved flag was set by 'move' handler, treat as drag, not click
-          if (focusMoved) return;
-
-          // Double check position just in case
-          const currentPos = dragWin.getBounds();
-          const dx = Math.abs(currentPos.x - focusStartPos.x);
-          const dy = Math.abs(currentPos.y - focusStartPos.y);
-
-          if (dx < 8 && dy < 8) { // Increased threshold slightly
-            // It's a click
-            lastToggleTime = Date.now();
-            const opened = await functions.toggleMenu();
-
-            // If opened (or was open), focus app layer
-            if (opened && menuWin && menuWin.isVisible()) {
-              menuWin.focus();
-              // dragWin will naturally lose focus to menuWin
-            } else {
-              // If CLOSED, we MUST force dragWin to lose focus so next click triggers 'focus' again.
-              if (SetForegroundWindow && lastExternalWindowHandle) {
-                SetForegroundWindow(lastExternalWindowHandle);
-              } else {
-                dragWin.blur();
-                createDummyFocusStealer();
-              }
-            }
-          }
-        }, 150);
-      } catch (e) { }
-    });
-
-    const createDummyFocusStealer = () => {
-      try {
-        let dummy = new BrowserWindow({
-          width: 1, height: 1,
-          x: -100, y: -100,
-          show: false,
-          frame: false,
-          skipTaskbar: true,
-          focusable: true
-        });
-        dummy.show();
-        dummy.focus();
-        setTimeout(() => {
-          dummy.close();
-          dummy = null;
-        }, 50);
-      } catch (e) { }
-    };
-
-    // Ensure dragWin stays on top when menuWin gets focus
-    menuWin.on('focus', () => {
-      try { if (dragWin && !dragWin.isDestroyed()) dragWin.moveTop(); } catch (e) { }
-    });
-
-    // Initial sync
-    setTimeout(syncMenuPos, 100);
-
-    dragWin.on('closed', () => { dragWin = null; if (menuWin) menuWin.close(); });
-    menuWin.on('closed', () => { menuWin = null; });
-
-  } catch (e) { console.error(e); }
+        
+        // We can just query the current widget bounds to be safe?
+        const res = await pluginApi.call(SERVICE_ID, 'getWidget', [state.widgetId]);
+        const current = res?.result;
+        if (!current) return;
+        
+        const curW = current.bounds.width;
+        const curH = current.bounds.height;
+        const curX = current.bounds.x;
+        const curY = current.bounds.y;
+        
+        const centerX = curX + Math.floor(curW / 2);
+        const centerY = curY + Math.floor(curH / 2);
+        
+        const newX = centerX - Math.floor(w / 2);
+        const newY = centerY - Math.floor(h / 2);
+        
+        state.lastWidgetPos = { x: newX, y: newY }; // Update our cache
+        
+        await pluginApi.call(SERVICE_ID, 'updateWidget', [
+            state.widgetId,
+            { x: newX, y: newY, width: w, height: h }
+        ]);
+        
+    } catch (e) { console.error(e); }
 }
 
 const functions = {
-  createWindows,
+  // Renamed from createWindows but kept for compatibility if called externally
+  createWindows: initWidgets, 
+  initWidgets,
 
   setSize: async (w, h, ax, ay) => {
     state.menuWidth = w;
     state.menuHeight = h;
-    // Store Anchor Points (relative to menuWin top-left)
-    state.menuAnchorX = (ax !== undefined) ? ax : Math.floor(w / 2);
-    state.menuAnchorY = (ay !== undefined) ? ay : Math.floor(h / 2);
-
-    if (menuWin && !menuWin.isDestroyed()) {
-      menuWin.setSize(w, h);
-      syncMenuPos();
+    // Anchor not used in this simplified model, we always center
+    if (state.menuExpanded) {
+        await updateWidgetSize();
     }
   },
 
   resizeDragWin: async (w, h) => {
-    try {
-      if (dragWin && !dragWin.isDestroyed()) {
-        state.dragWinSize = w; // Approximate, as w includes shadow
-        // Keep center position
-        const b = dragWin.getBounds();
-        const cx = b.x + Math.floor(b.width / 2);
-        const cy = b.y + Math.floor(b.height / 2);
-        const nx = cx - Math.floor(w / 2);
-        const ny = cy - Math.floor(h / 2);
-        dragWin.setBounds({ x: nx, y: ny, width: w, height: h });
-        syncMenuPos();
-        return true;
-      }
-    } catch (e) { }
-    return false;
+    state.dragWinSize = w;
+    if (!state.menuExpanded) {
+        await updateWidgetSize();
+    }
   },
 
   toggleMenu: async () => {
-    try {
-      if (!menuWin || menuWin.isDestroyed()) return functions.createWindows();
-      if (menuWin.isVisible()) {
-        return await functions.closeMenu();
-      } else {
-        return await functions.openMenu();
-      }
-    } catch (e) { return false; }
+    state.menuExpanded = !state.menuExpanded;
+    await updateWidgetSize();
+    pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: state.menuExpanded, theme: state.lastTheme || 'classic' });
+    return true;
   },
 
   openMenu: async () => {
-    try {
-      if (!menuWin || menuWin.isDestroyed()) return;
-      if (!dragWin || dragWin.isDestroyed()) return;
-
-      syncMenuPos();
-
-      menuWin.show();
-      menuWin.focus(); // Focus application layer
-
-      // Do NOT hide dragWin, keep it as the center button
-      try { dragWin.moveTop(); } catch (e) { }
-
-      pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: true, theme: state.lastTheme || 'classic' });
-      return true;
-    } catch (e) { return false; }
+    if (state.menuExpanded) return true;
+    state.menuExpanded = true;
+    await updateWidgetSize();
+    pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: true, theme: state.lastTheme || 'classic' });
+    return true;
   },
 
   closeMenu: async () => {
-    try {
-      if (!menuWin || menuWin.isDestroyed()) return;
-      menuWin.hide();
-
-      // Show dragWin (if it was hidden, though we don't hide it now)
-      if (dragWin && !dragWin.isDestroyed()) {
-        dragWin.show();
-        setTimeout(() => { try { dragWin.moveTop(); } catch (e) { } }, 50);
-      }
-
-      pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: false, theme: state.lastTheme || 'classic' });
-
-      // Restore focus to external window
-      if (SetForegroundWindow && lastExternalWindowHandle) {
-        try { SetForegroundWindow(lastExternalWindowHandle); } catch (e) { }
-      }
-
-      return true;
-    } catch (e) { return false; }
+    if (!state.menuExpanded) return true;
+    state.menuExpanded = false;
+    await updateWidgetSize();
+    pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: false, theme: state.lastTheme || 'classic' });
+    return true;
   },
-
 
   updateTheme: async (t) => {
     state.lastTheme = t;
   },
 
   getDragWinPos: async () => {
-    try {
-      if (dragWin && !dragWin.isDestroyed()) {
-        const b = dragWin.getBounds();
-        return { x: b.x, y: b.y };
-      }
-    } catch (e) { }
-    return null;
+    return state.lastWidgetPos;
   },
 
-  moveDragWin: async (x, y) => {
+  // Called by renderer via IPC
+  handleDrag: async () => {
     try {
-      if (dragWin && !dragWin.isDestroyed()) {
-        dragWin.setPosition(Math.round(x), Math.round(y));
-        return true;
-      }
-    } catch (e) { }
-    return false;
-  },
-
-  setWindowShape: async (type, rects) => {
-    try {
-      if (process.platform !== 'win32') return true;
-      let win = null;
-      if (type === 'surface') win = dragWin;
-      else if (type === 'application') win = menuWin;
-
-      if (win && !win.isDestroyed()) {
-        if (!Array.isArray(rects) || rects.length === 0) {
-          win.setShape([]);
-        } else {
-          // Ensure integers
-          const safeRects = rects.map(r => ({
-            x: Math.round(r.x), y: Math.round(r.y),
-            width: Math.round(r.width), height: Math.round(r.height)
-          }));
-          win.setShape(safeRects);
+        // Store start pos
+        const res = await pluginApi.call(SERVICE_ID, 'getWidget', [state.widgetId]);
+        if (res && res.result) {
+            state.dragStartPos = { x: res.result.bounds.x, y: res.result.bounds.y };
         }
-        return true;
-      }
-    } catch (e) { }
-    return false;
+        // Start Drag
+        await pluginApi.call(SERVICE_ID, 'startDrag', [state.widgetId]);
+    } catch (e) { console.error(e); }
   },
 
-  openCompass: async () => { return functions.createWindows(); },
+  // Called by renderer (optional)
+  endDrag: async (x, y) => {
+      try {
+          // Update cached pos
+          if (x !== undefined && y !== undefined) {
+            state.lastWidgetPos = { x, y };
+          }
+          
+          // Check for click
+          if (state.dragStartPos) {
+              const dx = Math.abs((x || state.lastWidgetPos.x) - state.dragStartPos.x);
+              const dy = Math.abs((y || state.lastWidgetPos.y) - state.dragStartPos.y);
+              
+              if (dx < 8 && dy < 8) {
+                  // Treat as click - toggle menu
+                  await functions.toggleMenu();
+              } else {
+                  // Drag ended - just ensure state is synced
+                  // No need to toggle
+              }
+              state.dragStartPos = null;
+          }
+      } catch (e) { console.error(e); }
+  },
+
+  // Set Shape (forward to service if needed, but service handles rects automatically based on widgets)
+  // screen-compass renderer calls this to set shape of the button (circle).
+  // service.toplayer calculates shape based on widget bounds (rect).
+  // If we want CIRCULAR shape, service.toplayer needs to support shape per widget?
+  // Currently service.toplayer uses widget bounds (rect).
+  // If we pass a shape, we might need to update service.toplayer to support custom shapes.
+  // For now, let's ignore setWindowShape call or map it to nothing, 
+  // as service.toplayer only supports rects for now.
+  // Actually, if we want click-through on corners of the circle, we need custom shape.
+  // But service.toplayer merges all widget bounds.
+  // If we want fine-grained shape, we would need to pass rects to service.toplayer.
+  setWindowShape: async (type, rects) => {
+      // Ignored for now as service.toplayer handles rects automatically
+      // We can also forward it if service.toplayer supported custom shapes per widget.
+      return true;
+  },
+
+  openCompass: async () => { return functions.initWidgets(); },
 
   openCompassSettings: async () => {
     // ... (Same as before)
@@ -441,27 +343,15 @@ const functions = {
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
   },
 
-  // ... Keep existing helpers like performAction, listPlugins etc.
   performAction: async (button) => {
-    // ... (Keep existing implementation)
+    // ... (Same as before)
     try {
       const b = (button && button.result) ? button.result : button;
       if (!b || typeof b !== 'object') return false;
       const type = String(b.actionType || '').trim();
       const payload = b.actionPayload || {};
       if (type === 'app') {
-        try {
-          if (pluginApi && pluginApi.launcher) {
-            // Pass current dragWin bounds to the launcher for positioning
-            let bounds = null;
-            if (dragWin && !dragWin.isDestroyed()) {
-              bounds = dragWin.getBounds();
-            }
-            pluginApi.launcher.open({ bounds, type: 'compass' });
-            return true;
-          }
-          return false;
-        } catch (e) { return { ok: false, error: e?.message || String(e) }; }
+        try { const opened = await functions.openApplicationsWindow(); return !!opened; } catch (e) { return { ok: false, error: e?.message || String(e) }; }
       }
       if (type === 'plugin') {
         const pid = String(payload.pluginId || '').trim();
@@ -525,9 +415,114 @@ const functions = {
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
   },
 
-  // (Removed openApplicationsWindow, closeApplicationsWindow, listInstalledApps)
-  // Keep getFileIconDataUrl if used by layer.application?
-  // layer.application might show icons too?
+  openApplicationsWindow: () => {
+    try {
+      const targetW = 420;
+      const targetH = 520;
+      const computePos = () => {
+        let nx = 0; let ny = 0;
+        let useW = targetW; let useH = targetH;
+        try {
+           // Use cached widget pos
+           const wb = { x: state.lastWidgetPos.x, y: state.lastWidgetPos.y, width: state.dragWinSize, height: state.dragWinSize };
+           nx = wb.x + Math.floor((wb.width - useW) / 2);
+           ny = wb.y - useH - 8;
+            
+           const display = screen.getDisplayNearestPoint ? screen.getDisplayNearestPoint({ x: nx + Math.floor(useW / 2), y: ny + Math.floor(useH / 2) }) : screen.getPrimaryDisplay();
+           const sb = display.bounds;
+           if (nx < sb.x) nx = sb.x;
+           if (ny < sb.y) ny = sb.y;
+           if (nx + useW > sb.x + sb.width) nx = sb.x + sb.width - useW;
+           if (ny + useH > sb.y + sb.height) ny = sb.y + sb.height - useH;
+           return { x: nx, y: ny, width: useW, height: useH };
+        } catch (e) { }
+        const d = screen.getPrimaryDisplay();
+        const b = d.bounds;
+        return { x: b.x + Math.floor((b.width - useW) / 2), y: b.y + Math.floor((b.height - useH) / 2), width: useW, height: useH };
+      };
+      if (appWin && !appWin.isDestroyed()) { try { appWin.show(); appWin.focus(); } catch (e) { } return true; }
+      const pos = computePos();
+      const isLinux = process.platform === 'linux';
+      appWin = new BrowserWindow({
+        x: pos.x,
+        y: pos.y,
+        width: pos.width,
+        height: pos.height,
+        useContentSize: true,
+        frame: false,
+        transparent: false,
+        backgroundColor: '#101820',
+        show: true,
+        resizable: false,
+        movable: true,
+        minimizable: false,
+        maximizable: false,
+        fullscreenable: false,
+        skipTaskbar: true,
+        alwaysOnTop: true,
+        type: isLinux ? 'toolbar' : undefined,
+        focusable: true,
+        hasShadow: true,
+        webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') }
+      });
+      appWin.loadFile(path.join(__dirname, 'layer.appMenu', 'index.html'));
+      try { appWin.on('closed', () => { appWin = null; }); } catch (e) { }
+
+      // Auto-close on blur
+      try {
+        appWin.on('blur', () => {
+          setTimeout(() => {
+            try {
+              if (appWin && !appWin.isDestroyed() && !appWin.isFocused()) {
+                functions.closeApplicationsWindow();
+              }
+            } catch (e) { }
+          }, 150);
+        });
+      } catch (e) { }
+
+      try { pluginApi.emit(state.eventChannel, { type: 'app.active', active: true }); } catch (e) { }
+      return true;
+    } catch (e) { return false; }
+  },
+
+  closeApplicationsWindow: () => {
+    try {
+      const had = !!(appWin && !appWin.isDestroyed());
+      if (had) { try { appWin.close(); } catch (e) { } appWin = null; }
+      try { pluginApi.emit(state.eventChannel, { type: 'app.active', active: false }); } catch (e) { }
+      return had;
+    } catch (e) { return false; }
+  },
+
+  listPlugins: () => { 
+    try { 
+      let pmPath = path.join(app.getAppPath(), 'src', 'main', 'Manager', 'Plugins', 'Main.js');
+      if (!fs.existsSync(pmPath)) {
+          pmPath = path.join(app.getAppPath(), 'src', 'main', 'pluginManager.js');
+      }
+      const pm = require(pmPath); 
+      return pm.getPlugins(); 
+    } catch (e) { return []; } 
+  },
+  listAutomationEvents: (pluginId) => { 
+    try { 
+      let pmPath = path.join(app.getAppPath(), 'src', 'main', 'Manager', 'Plugins', 'Main.js');
+      if (!fs.existsSync(pmPath)) pmPath = path.join(app.getAppPath(), 'src', 'main', 'pluginManager.js');
+      const pm = require(pmPath); 
+      const res = pm.listAutomationEvents(pluginId); 
+      return (res && res.ok && Array.isArray(res.events)) ? res.events : []; 
+    } catch (e) { return []; } 
+  },
+  listInstalledApps: async () => {
+    try {
+      if (process.platform !== 'win32') return [];
+      const now = Date.now();
+      if (__appsCache.list.length && (now - __appsCache.ts) < 600000) return __appsCache.list.slice(0, 300);
+      if (!__appsCache.list.length) { await buildAppsCache(); } else if (!__appsCache.building) { __appsCache.building = true; buildAppsCache().finally(() => { __appsCache.building = false; }); }
+      return __appsCache.list.slice(0, 120);
+    } catch (e) { return []; }
+  },
   getFileIconDataUrl: async (p) => {
     try {
       const fp = String(p || ''); if (!fp) return '';
@@ -538,12 +533,7 @@ const functions = {
       return img.toDataURL();
     } catch (e) { return ''; }
   },
-
-  // Legacy / IPC handlers
-  setDragging: (flag, offsetX, offsetY, inputType) => {
-    return true;
-  },
-
+  setDragging: (flag, offsetX, offsetY, inputType) => { return true; },
   onLowbarEvent: async (payload = {}) => {
     try {
       if (payload?.type === 'left.click') {
@@ -568,7 +558,6 @@ const functions = {
       return true;
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
   },
-
   openItemEditor: async (index) => {
     try {
       const floatingFile = path.join(__dirname, 'window.settings', 'pages', 'editor.html');
@@ -584,11 +573,9 @@ const functions = {
       return true;
     } catch (e) { return { ok: false, error: e?.message || String(e) }; }
   },
-
-  // Snapshot/Snap helpers (simplified)
   snap: () => { },
   logSnapshot: () => { },
-  setExpandedWindow: () => { } // Deprecated as we handle it internally now
+  setExpandedWindow: () => { }
 };
 
 const init = async (api) => {
@@ -600,48 +587,9 @@ const init = async (api) => {
     if (!pluginApi.log) {
       pluginApi.log = (msg) => { try { pluginApi.logWrite('info', String(msg || '')); } catch (e) { } };
     }
-    
-    // Initialize Native Utils via Plugin API (to avoid require('koffi') failure)
-    if (pluginApi.native && pluginApi.native.koffi) {
-        const koffi = pluginApi.native.koffi;
-        try {
-            user32 = koffi.load('user32.dll');
-            GetForegroundWindow = user32.func('void *GetForegroundWindow()');
-            SetForegroundWindow = user32.func('bool SetForegroundWindow(void *hwnd)');
-            
-            // Track focus
-            setInterval(() => {
-              try {
-                if (!GetForegroundWindow) return;
-                const hwnd = GetForegroundWindow();
-                if (!hwnd) return;
-                
-                // Check if it is our window
-                let isOurs = false;
-                const check = (win) => {
-                  if (win && !win.isDestroyed()) {
-                    const h = win.getNativeWindowHandle();
-                    // Compare addresses (BigInt)
-                    if (koffi.address(hwnd) === koffi.address(h)) return true;
-                  }
-                  return false;
-                };
-                
-                if (check(dragWin) || check(menuWin)) isOurs = true;
-                
-                if (!isOurs) {
-                  lastExternalWindowHandle = hwnd;
-                }
-              } catch (e) { }
-            }, 250);
-            
-        } catch (e) { 
-            pluginApi.log('Native Init Failed: ' + e.message);
-        }
-    }
-    
   } catch (e) { }
-  const ready = () => { functions.createWindows(); };
+
+  const ready = () => { functions.initWidgets(); };
   if (app.isReady()) ready(); else app.once('ready', ready);
 };
 

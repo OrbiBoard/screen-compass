@@ -358,6 +358,10 @@ center.addEventListener('click', () => {
     try { window.compassAPI.pluginCall('screen-compass', 'closeMenu', []); } catch(e){}
 });
 
+center.addEventListener('mousedown', () => {
+    try { window.compassAPI.pluginCall('screen-compass', 'handleDrag', []); } catch(e){}
+});
+
 // Drag hint logic
 let hintTimer = null;
 const root = document.getElementById('root');
@@ -405,8 +409,13 @@ try { window.addEventListener('resize', () => { placeItems(); }); } catch (e) {}
 (async function init(){ await ensureDefaults(); await loadItems(); placeItems(); setExpanded(false); updateCenterIcon(); })();
 
 try { window.compassAPI.subscribe('screen-compass-channel'); } catch (e) {}
+try { window.compassAPI.subscribe('widget.drag.end'); } catch (e) {}
 try {
   window.compassAPI.onEvent(async (name, payload) => {
+    if (name === 'widget.drag.end' && payload) {
+        try { window.compassAPI.pluginCall('screen-compass', 'endDrag', [payload.x, payload.y]); } catch(e){}
+        return;
+    }
     if (name !== 'screen-compass-channel' || !payload) return;
     if (payload.type === 'buttons.update') {
       try { if (Array.isArray(payload.buttons)) { items = payload.buttons; } else { await loadItems(); } if (payload.theme) { const t = String(payload.theme); theme = ['classic','sector','hleft','hright'].includes(t)?t:theme; } if (payload.centerSize) { centerSize = Math.max(32, Math.min(160, Number(payload.centerSize) || centerSize)); sizeCollapsed = Math.max(40, Math.min(240, centerSize + 10)); } else if (payload.sizeCollapsed) { sizeCollapsed = Math.max(40, Math.min(240, Number(payload.sizeCollapsed) || sizeCollapsed)); centerSize = Math.max(32, Math.min(160, sizeCollapsed - 10)); } if (payload.sizeExpanded) sizeExpanded = Number(payload.sizeExpanded) || sizeExpanded; if (payload.centerIcon) centerIcon = String(payload.centerIcon) || centerIcon; } catch (e) {} placeItems(); setExpanded(expanded); updateCenterIcon(); }
