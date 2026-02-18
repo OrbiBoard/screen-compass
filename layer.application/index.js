@@ -74,6 +74,9 @@ async function loadItems() {
       sizeCollapsed = Math.max(40, Math.min(240, Number(sizeCollapsed || (centerSize + 10)))); 
       // Ensure expanded is big enough
       sizeExpanded = Math.max(200, Number(sizeExpanded || 240));
+      
+      // Sync sizeCollapsed to backend to prevent clipping
+      await window.compassAPI.pluginCall('screen-compass', 'resizeDragWin', [sizeCollapsed, sizeCollapsed]);
   } catch (e) {}
 }
 
@@ -418,7 +421,13 @@ try {
     }
     if (name !== 'screen-compass-channel' || !payload) return;
     if (payload.type === 'buttons.update') {
-      try { if (Array.isArray(payload.buttons)) { items = payload.buttons; } else { await loadItems(); } if (payload.theme) { const t = String(payload.theme); theme = ['classic','sector','hleft','hright'].includes(t)?t:theme; } if (payload.centerSize) { centerSize = Math.max(32, Math.min(160, Number(payload.centerSize) || centerSize)); sizeCollapsed = Math.max(40, Math.min(240, centerSize + 10)); } else if (payload.sizeCollapsed) { sizeCollapsed = Math.max(40, Math.min(240, Number(payload.sizeCollapsed) || sizeCollapsed)); centerSize = Math.max(32, Math.min(160, sizeCollapsed - 10)); } if (payload.sizeExpanded) sizeExpanded = Number(payload.sizeExpanded) || sizeExpanded; if (payload.centerIcon) centerIcon = String(payload.centerIcon) || centerIcon; } catch (e) {} placeItems(); setExpanded(expanded); updateCenterIcon(); }
+      try { if (Array.isArray(payload.buttons)) { items = payload.buttons; } else { await loadItems(); } if (payload.theme) { const t = String(payload.theme); theme = ['classic','sector','hleft','hright'].includes(t)?t:theme; } if (payload.centerSize) { centerSize = Math.max(32, Math.min(160, Number(payload.centerSize) || centerSize)); sizeCollapsed = Math.max(40, Math.min(240, centerSize + 10)); } else if (payload.sizeCollapsed) { sizeCollapsed = Math.max(40, Math.min(240, Number(payload.sizeCollapsed) || sizeCollapsed)); centerSize = Math.max(32, Math.min(160, sizeCollapsed - 10)); } if (payload.sizeExpanded) sizeExpanded = Number(payload.sizeExpanded) || sizeExpanded; if (payload.centerIcon) centerIcon = String(payload.centerIcon) || centerIcon; 
+      
+      // Update window size dynamically
+      if (!expanded) {
+          await window.compassAPI.pluginCall('screen-compass', 'resizeDragWin', [sizeCollapsed, sizeCollapsed]);
+      }
+      } catch (e) {} placeItems(); setExpanded(expanded); updateCenterIcon(); }
     if (payload.type === 'app.active') { try { appActive = !!payload.active; } catch (e) { appActive = !!payload.active; } try { placeItems(); } catch (e) {} }
     if (payload.type === 'menu.toggle') { setExpanded(payload.expanded); updateCenterIcon(); }
   });

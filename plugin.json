@@ -11,6 +11,12 @@
       "text": "罗盘设置",
       "icon": "ri-settings-3-line",
       "target": "openCompassSettings"
+    },
+    {
+      "id": "openCompass",
+      "text": "打开/重置罗盘",
+      "icon": "ri-compass-3-line",
+      "target": "openCompass"
     }
   ],
   "configSchema": {

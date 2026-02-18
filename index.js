@@ -59,7 +59,7 @@ const state = {
   menuWidth: 240,
   menuHeight: 240,
   menuExpanded: false,
-  dragWinSize: 48, // Button size
+  dragWinSize: 60, // Button size (Default increased to avoid clipping)
   lastTheme: 'classic',
   dragStartPos: null, // To detect click vs drag
   lastWidgetPos: { x: 0, y: 0 } // Cache for positioning
@@ -94,7 +94,12 @@ async function initWidgets() {
     // Notify initial state
     pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: false, theme: state.lastTheme || 'classic' });
 
-  } catch (e) { console.error('[ScreenCompass] initWidgets failed:', e); }
+  } catch (e) { 
+    console.error('[ScreenCompass] initWidgets failed:', e);
+    if (pluginApi && pluginApi.logWrite) {
+      pluginApi.logWrite('error', '[ScreenCompass] initWidgets failed: ' + (e.message || JSON.stringify(e)));
+    }
+  }
 }
 
 async function updateWidgetSize() {
