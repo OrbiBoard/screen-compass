@@ -263,7 +263,7 @@ function placeItems() {
   }
 
   // Calculate required window size and center offset
-  const margin = 16;
+  const margin = 24;
   let reqW = 240, reqH = 240, offX = 120, offY = 120;
   
   if (isH) {
@@ -278,7 +278,7 @@ function placeItems() {
      const bgWidth = centerSize + 24 + totalW + bgPadH * 2;
      
      reqW = bgWidth + margin*2; // No min width constraint, fit content
-     reqH = Math.max(Math.round(centerSize)+18, 56) + margin*2;
+     reqH = Math.max(Math.round(centerSize)+18, 56) + margin*3;
      
      // ANCHOR CALCULATION
      // We need to tell main process where the "center" of the drag button is, relative to our window.
@@ -354,16 +354,70 @@ setExpanded = (on) => {
   if (expanded) resetInactivityTimer();
 };
 
-// Handle center button click
-center.addEventListener('click', () => {
-    // When in menu mode, center button always means collapse
-    setExpanded(false);
-    try { window.compassAPI.pluginCall('screen-compass', 'closeMenu', []); } catch(e){}
+// Handle center button drag manually
+let isWinDragging = false;
+let winStartScreenX = 0;
+let winStartScreenY = 0;
+let winInitialPos = null;
+const WIN_DRAG_THRESHOLD = 5;
+
+center.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return; // Only left click
+    
+    isWinDragging = false;
+    winStartScreenX = e.screenX;
+    winStartScreenY = e.screenY;
+    winInitialPos = null;
+    
+    document.addEventListener('mousemove', onCenterMouseMove);
+    document.addEventListener('mouseup', onCenterMouseUp);
+    
+    (async () => {
+        try {
+            const res = await window.compassAPI.pluginCall('screen-compass', 'getDragWinPos');
+            if (res && res.result) winInitialPos = res.result;
+            else winInitialPos = null;
+        } catch (e) { winInitialPos = null; }
+    })();
 });
 
-center.addEventListener('mousedown', () => {
-    try { window.compassAPI.pluginCall('screen-compass', 'handleDrag', []); } catch(e){}
-});
+function onCenterMouseMove(e) {
+    const dx = e.screenX - winStartScreenX;
+    const dy = e.screenY - winStartScreenY;
+    
+    if (!isWinDragging && (Math.abs(dx) > WIN_DRAG_THRESHOLD || Math.abs(dy) > WIN_DRAG_THRESHOLD)) {
+        isWinDragging = true;
+        // Collapse if expanded when drag starts
+        if (expanded) {
+            setExpanded(false);
+            try { window.compassAPI.pluginCall('screen-compass', 'closeMenu', []); } catch(e){}
+        }
+    }
+    
+    if (isWinDragging && winInitialPos) {
+        const newX = winInitialPos.x + dx;
+        const newY = winInitialPos.y + dy;
+        try { window.compassAPI.pluginCall('screen-compass', 'moveDragWin', [newX, newY]); } catch(e){}
+    }
+}
+
+function onCenterMouseUp(e) {
+    document.removeEventListener('mousemove', onCenterMouseMove);
+    document.removeEventListener('mouseup', onCenterMouseUp);
+    
+    if (!isWinDragging) {
+        // Treat as click
+        if (expanded) {
+             setExpanded(false);
+             try { window.compassAPI.pluginCall('screen-compass', 'closeMenu', []); } catch(e){}
+        } else {
+             setExpanded(true);
+             try { window.compassAPI.pluginCall('screen-compass', 'openMenu', []); } catch(e){}
+        }
+    }
+    isWinDragging = false;
+    winInitialPos = null;
+}
 
 // Drag hint logic
 let hintTimer = null;

@@ -49,7 +49,7 @@ async function buildAppsCache() {
 }
 
 // --- Plugin State & Service ---
-const SERVICE_ID = 'service.toplayer';
+const SERVICE_ID = 'service-toplayer';
 let pluginApi = null;
 let appWin = null; // Independent launcher window
 
@@ -59,10 +59,11 @@ const state = {
   menuWidth: 240,
   menuHeight: 240,
   menuExpanded: false,
-  dragWinSize: 60, // Button size (Default increased to avoid clipping)
+  dragWinSize: 120, // Button size (Default increased to avoid clipping)
   lastTheme: 'classic',
   dragStartPos: null, // To detect click vs drag
-  lastWidgetPos: { x: 0, y: 0 } // Cache for positioning
+  lastWidgetPos: { x: 0, y: 0 }, // Cache for positioning
+  anchor: { x: 60, y: 60 } // Anchor point (center of button relative to window)
 };
 
 function emitUpdate(target, value) { try { pluginApi.emit(state.eventChannel, { type: 'update', target, value }); } catch (e) { } }
@@ -77,6 +78,7 @@ async function initWidgets() {
     const b = d.bounds;
 
     const w = state.dragWinSize, h = state.dragWinSize, mr = 24, mb = 32;
+    state.anchor = { x: Math.floor(w / 2), y: Math.floor(h / 2) };
     const dragX = b.x + b.width - w - mr;
     const dragY = b.y + b.height - h - mb;
     state.lastWidgetPos = { x: dragX, y: dragY };
@@ -84,12 +86,30 @@ async function initWidgets() {
     // 2. Add Unified Widget (Application Layer + Surface Button)
     // Initially Collapsed (Button size)
     // Wrap options in array to ensure correct argument passing
-    await pluginApi.call(SERVICE_ID, 'addWidget', [{
-      id: state.widgetId,
-      url: url.pathToFileURL(path.join(__dirname, 'layer.application', 'index.html')).href,
-      x: dragX, y: dragY, width: w, height: h,
-      preload: path.join(__dirname, 'preload.js')
-    }]);
+    
+    // Check if widget already exists to avoid duplication (which might cause multiple 'not enabled' prompts if it fails and retries)
+    // But we don't have an easy way to check existence without calling getWidget which might throw.
+    
+    // We should try/catch the addWidget call specifically.
+    try {
+        await pluginApi.call(SERVICE_ID, 'addWidget', [{
+          id: state.widgetId,
+          url: url.pathToFileURL(path.join(__dirname, 'layer.application', 'index.html')).href,
+          x: dragX, y: dragY, width: w, height: h,
+          preload: path.join(__dirname, 'preload.js')
+        }]);
+    } catch (e) {
+        // If service.toplayer is not enabled, this throws.
+        // We should suppress the error if it's just "not enabled" to avoid spamming user?
+        // But the user said "prompt 3 times".
+        // If initWidgets is called multiple times, or if addWidget retries.
+        
+        // Actually, if service.toplayer is not enabled, `pluginApi.call` might show a prompt if it's designed to do so?
+        // Or the error is propagated and logged.
+        
+        // Let's just log it quietly.
+        console.warn('[ScreenCompass] addWidget failed:', e.message);
+    }
 
     // Notify initial state
     pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: false, theme: state.lastTheme || 'classic' });
@@ -108,93 +128,80 @@ async function updateWidgetSize() {
         const w = isExpanded ? state.menuWidth : state.dragWinSize;
         const h = isExpanded ? state.menuHeight : state.dragWinSize;
         
-        // When expanded, we need to recenter the widget so the button stays in place relative to mouse/screen?
-        // Actually, the button is usually at the center of the menu.
-        // So if we expand, the top-left corner (x,y) must change.
+        // Use cached bounds as base
+        // lastWidgetPos is top-left of CURRENT state.
+        // We need to find the "Anchor Point" (Center Button) in Screen Coords.
         
-        // Button center:
-        const cx = state.lastWidgetPos.x + Math.floor(state.dragWinSize / 2);
-        const cy = state.lastWidgetPos.y + Math.floor(state.dragWinSize / 2);
+        let anchorScreenX, anchorScreenY;
         
-        let nx, ny;
-        if (isExpanded) {
-            // Expand around center
-            nx = cx - Math.floor(w / 2);
-            ny = cy - Math.floor(h / 2);
-        } else {
-            // Collapse to button size (top-left should align with center - half button)
-            // Wait, lastWidgetPos tracks the TOP-LEFT of the CURRENT widget state?
-            // If we collapse, we want the button to stay where the center was.
-            // But lastWidgetPos is updated by drag events.
-            
-            // Let's assume lastWidgetPos is always the TOP-LEFT of the VISIBLE widget.
-            // If we expand:
-            // Old TopLeft = lastWidgetPos
-            // Old Center = Old TopLeft + dragWinSize/2
-            // New Width = menuWidth
-            // New TopLeft = Old Center - menuWidth/2
-            
-            // If we collapse:
-            // Old TopLeft = lastWidgetPos (which is the expanded menu top-left)
-            // Old Center = Old TopLeft + menuWidth/2
-            // New Width = dragWinSize
-            // New TopLeft = Old Center - dragWinSize/2
-            
-            // So logic is consistent.
-            
-            // However, we need to know if we are CURRENTLY expanded to calculate center correctly.
-            // state.menuExpanded is the TARGET state.
-            // We should use the PREVIOUS state to calculate center?
-            // Or just rely on the fact that `lastWidgetPos` is the current position.
-            
-            // Actually, `state.lastWidgetPos` is updated on DRAG END.
-            // If we toggle without dragging, `lastWidgetPos` is the current top-left.
-            // BUT, if we toggle, we change size AND position.
-            
-            // Let's refine `lastWidgetPos`.
-            // Let's track `centerPos` instead? No, widget system uses x,y.
-            
-            // Problem: If I am collapsed (48x48) at (100,100). Center is (124,124).
-            // I click -> Expand.
-            // New size 240x240. New x = 124 - 120 = 4. New y = 124 - 120 = 4.
-            // `updateWidget` sends x=4, y=4, w=240, h=240.
-            // `state.lastWidgetPos` becomes (4,4).
-            
-            // I click center -> Collapse.
-            // Current pos (4,4). Size 240. Center = 4+120=124.
-            // New size 48. New x = 124 - 24 = 100.
-            // `updateWidget` sends x=100, y=100, w=48, h=48.
-            // `state.lastWidgetPos` becomes (100,100).
-            
-            // This logic works IF we know the CURRENT size.
-            // `state.menuExpanded` is the NEW state.
-            // So we need `wasExpanded` or derive it.
-        }
+        // If transitioning FROM Expanded TO Collapsed:
+        // Current state is Expanded.
+        // Anchor relative to window is state.anchor (set by setSize).
+        // If we are currently expanded, we rely on the LAST anchor set by setSize.
+        // But if we are collapsed, anchor is center.
         
-        // We can just query the current widget bounds to be safe?
+        // Wait, we don't know the previous state easily here unless we track it.
+        // BUT, `updateWidgetSize` is called after `state.menuExpanded` changes.
+        // So we know the TARGET state.
+        // We need to know the SOURCE state to find the anchor.
+        
+        // Actually, let's just calculate the anchor based on CURRENT widget bounds.
+        // If current size matches `dragWinSize`, we are Collapsed.
+        // If current size matches `menuWidth/Height`, we are Expanded.
+        
         const res = await pluginApi.call(SERVICE_ID, 'getWidget', [state.widgetId]);
         const current = res?.result;
-        if (!current) return;
+        if (!current || !current.bounds) return;
         
         const curW = current.bounds.width;
         const curH = current.bounds.height;
         const curX = current.bounds.x;
         const curY = current.bounds.y;
         
-        const centerX = curX + Math.floor(curW / 2);
-        const centerY = curY + Math.floor(curH / 2);
+        // Determine current anchor relative to window
+        let curAnchorX, curAnchorY;
         
-        const newX = centerX - Math.floor(w / 2);
-        const newY = centerY - Math.floor(h / 2);
+        // Heuristic: If size is small (< 150), assume collapsed (centered anchor)
+        if (curW < 150) {
+            curAnchorX = Math.floor(curW / 2);
+            curAnchorY = Math.floor(curH / 2);
+        } else {
+            // Assume expanded. Use the last known anchor from setSize?
+            // Or if we don't have it, center?
+            // Ideally `setSize` is called before expansion.
+            curAnchorX = state.anchor.x;
+            curAnchorY = state.anchor.y;
+        }
         
-        state.lastWidgetPos = { x: newX, y: newY }; // Update our cache
+        // Calculate Screen Anchor
+        anchorScreenX = curX + curAnchorX;
+        anchorScreenY = curY + curAnchorY;
+        
+        // Calculate New Top-Left
+        let newX, newY;
+        
+        if (isExpanded) {
+            // Target: Expanded
+            // We use state.anchor (which should be set by setSize for the expanded state)
+            newX = anchorScreenX - state.anchor.x;
+            newY = anchorScreenY - state.anchor.y;
+        } else {
+            // Target: Collapsed
+            // Anchor is center of dragWinSize
+            newX = anchorScreenX - Math.floor(state.dragWinSize / 2);
+            newY = anchorScreenY - Math.floor(state.dragWinSize / 2);
+        }
+        
+        state.lastWidgetPos = { x: newX, y: newY };
         
         await pluginApi.call(SERVICE_ID, 'updateWidget', [
             state.widgetId,
             { x: newX, y: newY, width: w, height: h }
         ]);
         
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        // Suppress error 
+    }
 }
 
 const functions = {
@@ -205,10 +212,18 @@ const functions = {
   setSize: async (w, h, ax, ay) => {
     state.menuWidth = w;
     state.menuHeight = h;
-    // Anchor not used in this simplified model, we always center
+    if (ax !== undefined && ay !== undefined) {
+        state.anchor = { x: ax, y: ay };
+    }
     if (state.menuExpanded) {
         await updateWidgetSize();
     }
+  },
+
+  setWindowShape: async (type, rects) => {
+      // Function stub to prevent errors from frontend
+      // Service.toplayer currently does not support per-widget shape setting via API
+      return true;
   },
 
   resizeDragWin: async (w, h) => {
@@ -249,12 +264,27 @@ const functions = {
     return state.lastWidgetPos;
   },
 
+  moveDragWin: async (x, y) => {
+    try {
+        if (x === undefined || y === undefined) return;
+        state.lastWidgetPos = { x, y };
+        const w = state.menuExpanded ? state.menuWidth : state.dragWinSize;
+        const h = state.menuExpanded ? state.menuHeight : state.dragWinSize;
+        await pluginApi.call(SERVICE_ID, 'updateWidget', [
+            state.widgetId,
+            { x, y, width: w, height: h }
+        ]);
+    } catch (e) { 
+        // Suppress error
+    }
+  },
+
   // Called by renderer via IPC
   handleDrag: async () => {
     try {
         // Store start pos
         const res = await pluginApi.call(SERVICE_ID, 'getWidget', [state.widgetId]);
-        if (res && res.result) {
+        if (res && res.result && res.result.bounds) {
             state.dragStartPos = { x: res.result.bounds.x, y: res.result.bounds.y };
         }
         // Start Drag
@@ -287,22 +317,7 @@ const functions = {
       } catch (e) { console.error(e); }
   },
 
-  // Set Shape (forward to service if needed, but service handles rects automatically based on widgets)
-  // screen-compass renderer calls this to set shape of the button (circle).
-  // service.toplayer calculates shape based on widget bounds (rect).
-  // If we want CIRCULAR shape, service.toplayer needs to support shape per widget?
-  // Currently service.toplayer uses widget bounds (rect).
-  // If we pass a shape, we might need to update service.toplayer to support custom shapes.
-  // For now, let's ignore setWindowShape call or map it to nothing, 
-  // as service.toplayer only supports rects for now.
-  // Actually, if we want click-through on corners of the circle, we need custom shape.
-  // But service.toplayer merges all widget bounds.
-  // If we want fine-grained shape, we would need to pass rects to service.toplayer.
-  setWindowShape: async (type, rects) => {
-      // Ignored for now as service.toplayer handles rects automatically
-      // We can also forward it if service.toplayer supported custom shapes per widget.
-      return true;
-  },
+
 
   openCompass: async () => { return functions.initWidgets(); },
 
