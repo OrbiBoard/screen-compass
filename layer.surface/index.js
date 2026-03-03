@@ -322,9 +322,20 @@ function updateWindowShape() {
 
 // --- Drag & Toggle Logic ---
 
-let startScreenX, startScreenY;
+let startScreenX = 0, startScreenY = 0;
 let initialWinPos = null;
 const DRAG_THRESHOLD = 5;
+let toplayerDragActive = false;
+
+// Cleanup function to ensure all listeners are removed
+function cleanupDragListeners() {
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+    document.removeEventListener('mouseleave', onMouseUp);
+    isDragging = false;
+    toplayerDragActive = false;
+    initialWinPos = null;
+}
 
 // Toggle Menu: The core function
 async function setExpanded(expanded) {
@@ -350,13 +361,17 @@ async function setExpanded(expanded) {
     } catch(e) { console.error(e); }
 }
 
-// Drag Logic on Center Button
+// Drag Logic on Center Button - frontend controls everything, toplayer just manages shape
 center.addEventListener('mousedown', async (e) => {
     if (e.button !== 0) return;
     // If expanded, clicking center usually means close.
     // If collapsed, it could be click (open) or drag.
     
+    // Clean up any previous drag state first
+    cleanupDragListeners();
+    
     isDragging = false;
+    toplayerDragActive = false;
     startScreenX = e.screenX;
     startScreenY = e.screenY;
     
@@ -366,11 +381,18 @@ center.addEventListener('mousedown', async (e) => {
         else initialWinPos = null;
     } catch (e) { initialWinPos = null; }
 
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
+    // Use window to capture events even when mouse leaves the element
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    document.addEventListener('mouseleave', onMouseUp);
 });
 
 function onMouseMove(e) {
+    // Safety check: if we're not dragging, ignore
+    if (!isDragging && startScreenX === 0 && startScreenY === 0) {
+        return;
+    }
+    
     const dx = e.screenX - startScreenX;
     const dy = e.screenY - startScreenY;
     
@@ -378,8 +400,19 @@ function onMouseMove(e) {
         isDragging = true;
         // If dragging started, ensure we are collapsed?
         if (isExpanded) setExpanded(false);
+        
+        // Notify toplayer to set fullscreen shape (enables mouse events outside widget)
+        (async () => {
+            try {
+                await window.compassAPI.pluginCall('screen-compass', 'handleDrag', []);
+                toplayerDragActive = true;
+            } catch(err) {
+                console.warn('[ScreenCompass Surface] handleDrag failed:', err);
+            }
+        })();
     }
     
+    // We handle the movement ourselves
     if (isDragging && initialWinPos) {
         const newX = initialWinPos.x + dx;
         const newY = initialWinPos.y + dy;
@@ -388,16 +421,33 @@ function onMouseMove(e) {
 }
 
 function onMouseUp(e) {
-    document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('mouseup', onMouseUp);
+    // Always remove listeners first
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+    document.removeEventListener('mouseleave', onMouseUp);
     
     if (!isDragging) {
         // Clicked!
         setExpanded(!isExpanded);
+    } else if (toplayerDragActive) {
+        // Notify toplayer to end drag and restore shape
+        const dx = e.screenX - startScreenX;
+        const dy = e.screenY - startScreenY;
+        const finalX = initialWinPos ? initialWinPos.x + dx : undefined;
+        const finalY = initialWinPos ? initialWinPos.y + dy : undefined;
+        (async () => {
+            try { 
+                await window.compassAPI.pluginCall('screen-compass', 'endDragFromFrontend', [finalX, finalY]); 
+            } catch(e) {}
+        })();
     }
     
+    // Reset all state
     isDragging = false;
+    toplayerDragActive = false;
     initialWinPos = null;
+    startScreenX = 0;
+    startScreenY = 0;
 }
 
 // Drag Hint Logic

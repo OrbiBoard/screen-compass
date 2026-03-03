@@ -354,23 +354,40 @@ setExpanded = (on) => {
   if (expanded) resetInactivityTimer();
 };
 
-// Handle center button drag manually
+// Handle center button drag - frontend controls everything, toplayer just manages shape
 let isWinDragging = false;
 let winStartScreenX = 0;
 let winStartScreenY = 0;
 let winInitialPos = null;
 const WIN_DRAG_THRESHOLD = 5;
+let toplayerDragActive = false;
+
+// Cleanup function to ensure all listeners are removed
+function cleanupDragListeners() {
+    window.removeEventListener('mousemove', onCenterMouseMove);
+    window.removeEventListener('mouseup', onCenterMouseUp);
+    document.removeEventListener('mouseleave', onCenterMouseUp);
+    isWinDragging = false;
+    toplayerDragActive = false;
+    winInitialPos = null;
+}
 
 center.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return; // Only left click
     
+    // Clean up any previous drag state first
+    cleanupDragListeners();
+    
     isWinDragging = false;
+    toplayerDragActive = false;
     winStartScreenX = e.screenX;
     winStartScreenY = e.screenY;
     winInitialPos = null;
     
-    document.addEventListener('mousemove', onCenterMouseMove);
-    document.addEventListener('mouseup', onCenterMouseUp);
+    // Use window to capture events even when mouse leaves the element
+    window.addEventListener('mousemove', onCenterMouseMove);
+    window.addEventListener('mouseup', onCenterMouseUp);
+    document.addEventListener('mouseleave', onCenterMouseUp);
     
     (async () => {
         try {
@@ -382,6 +399,11 @@ center.addEventListener('mousedown', (e) => {
 });
 
 function onCenterMouseMove(e) {
+    // Safety check: if we're not dragging, ignore
+    if (!isWinDragging && winStartScreenX === 0 && winStartScreenY === 0) {
+        return;
+    }
+    
     const dx = e.screenX - winStartScreenX;
     const dy = e.screenY - winStartScreenY;
     
@@ -392,8 +414,19 @@ function onCenterMouseMove(e) {
             setExpanded(false);
             try { window.compassAPI.pluginCall('screen-compass', 'closeMenu', []); } catch(e){}
         }
+        
+        // Notify toplayer to set fullscreen shape (enables mouse events outside widget)
+        (async () => {
+            try {
+                await window.compassAPI.pluginCall('screen-compass', 'handleDrag', []);
+                toplayerDragActive = true;
+            } catch(err) {
+                console.warn('[ScreenCompass] handleDrag failed:', err);
+            }
+        })();
     }
     
+    // We handle the movement ourselves
     if (isWinDragging && winInitialPos) {
         const newX = winInitialPos.x + dx;
         const newY = winInitialPos.y + dy;
@@ -402,8 +435,10 @@ function onCenterMouseMove(e) {
 }
 
 function onCenterMouseUp(e) {
-    document.removeEventListener('mousemove', onCenterMouseMove);
-    document.removeEventListener('mouseup', onCenterMouseUp);
+    // Always remove listeners first
+    window.removeEventListener('mousemove', onCenterMouseMove);
+    window.removeEventListener('mouseup', onCenterMouseUp);
+    document.removeEventListener('mouseleave', onCenterMouseUp);
     
     if (!isWinDragging) {
         // Treat as click
@@ -414,9 +449,25 @@ function onCenterMouseUp(e) {
              setExpanded(true);
              try { window.compassAPI.pluginCall('screen-compass', 'openMenu', []); } catch(e){}
         }
+    } else if (toplayerDragActive) {
+        // Notify toplayer to end drag and restore shape
+        const dx = e.screenX - winStartScreenX;
+        const dy = e.screenY - winStartScreenY;
+        const finalX = winInitialPos ? winInitialPos.x + dx : undefined;
+        const finalY = winInitialPos ? winInitialPos.y + dy : undefined;
+        (async () => {
+            try { 
+                await window.compassAPI.pluginCall('screen-compass', 'endDragFromFrontend', [finalX, finalY]); 
+            } catch(e) {}
+        })();
     }
+    
+    // Reset all state
     isWinDragging = false;
+    toplayerDragActive = false;
     winInitialPos = null;
+    winStartScreenX = 0;
+    winStartScreenY = 0;
 }
 
 // Drag hint logic

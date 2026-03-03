@@ -287,12 +287,32 @@ const functions = {
         if (res && res.result && res.result.bounds) {
             state.dragStartPos = { x: res.result.bounds.x, y: res.result.bounds.y };
         }
-        // Start Drag
+        // Start Drag - this sets fullscreen shape
         await pluginApi.call(SERVICE_ID, 'startDrag', [state.widgetId]);
     } catch (e) { console.error(e); }
   },
 
-  // Called by renderer (optional)
+  // Called by frontend when drag ends
+  endDragFromFrontend: async (x, y) => {
+    try {
+        // Update cached pos
+        if (x !== undefined && y !== undefined) {
+            state.lastWidgetPos = { x, y };
+        }
+        
+        // End drag in toplayer - this restores shape
+        await pluginApi.call(SERVICE_ID, 'endDrag', [{ id: state.widgetId, x, y }]);
+        
+        // Emit event for any listeners
+        if (pluginApi) {
+            pluginApi.emit('widget.drag.end', { id: state.widgetId, x, y });
+        }
+        
+        state.dragStartPos = null;
+    } catch (e) { console.error(e); }
+  },
+
+  // Called by renderer (optional) - for backward compatibility with widget.drag.end event
   endDrag: async (x, y) => {
       try {
           // Update cached pos
