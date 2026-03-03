@@ -256,6 +256,15 @@ const functions = {
     return true;
   },
 
+  setMenuState: async (expanded) => {
+    const newState = !!expanded;
+    if (state.menuExpanded === newState) return true;
+    state.menuExpanded = newState;
+    await updateWidgetSize();
+    pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: state.menuExpanded, theme: state.lastTheme || 'classic' });
+    return true;
+  },
+
   updateTheme: async (t) => {
     state.lastTheme = t;
   },
@@ -270,7 +279,8 @@ const functions = {
         state.lastWidgetPos = { x, y };
         const w = state.menuExpanded ? state.menuWidth : state.dragWinSize;
         const h = state.menuExpanded ? state.menuHeight : state.dragWinSize;
-        await pluginApi.call(SERVICE_ID, 'updateWidget', [
+        // Don't await - fire and forget for better responsiveness
+        pluginApi.call(SERVICE_ID, 'updateWidget', [
             state.widgetId,
             { x, y, width: w, height: h }
         ]);
@@ -289,6 +299,8 @@ const functions = {
         }
         // Start Drag - this sets fullscreen shape
         await pluginApi.call(SERVICE_ID, 'startDrag', [state.widgetId]);
+        // Show overlay
+        pluginApi.call(SERVICE_ID, 'showOverlay', ['点击空白区域取消拖动']);
     } catch (e) { console.error(e); }
   },
 
@@ -300,8 +312,17 @@ const functions = {
             state.lastWidgetPos = { x, y };
         }
         
+        // Hide overlay first
+        pluginApi.call(SERVICE_ID, 'hideOverlay', []);
+        
         // End drag in toplayer - this restores shape
         await pluginApi.call(SERVICE_ID, 'endDrag', [{ id: state.widgetId, x, y }]);
+        
+        // Sync menu state - ensure backend knows menu is collapsed after drag
+        if (state.menuExpanded) {
+            state.menuExpanded = false;
+            pluginApi.emit(state.eventChannel, { type: 'menu.toggle', expanded: false, theme: state.lastTheme || 'classic' });
+        }
         
         // Emit event for any listeners
         if (pluginApi) {
@@ -391,7 +412,11 @@ const functions = {
       const type = String(b.actionType || '').trim();
       const payload = b.actionPayload || {};
       if (type === 'app') {
-        try { const opened = await functions.openApplicationsWindow(); return !!opened; } catch (e) { return { ok: false, error: e?.message || String(e) }; }
+        try { 
+          const wb = { x: state.lastWidgetPos.x, y: state.lastWidgetPos.y, width: state.dragWinSize, height: state.dragWinSize };
+          await pluginApi.call('app-launcher', 'toggleMenu', [{ type: 'compass', bounds: wb }]);
+          return true; 
+        } catch (e) { return { ok: false, error: e?.message || String(e) }; }
       }
       if (type === 'plugin') {
         const pid = String(payload.pluginId || '').trim();

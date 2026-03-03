@@ -113,8 +113,23 @@ function placeItems() {
   const rootRect = (document.getElementById('root')?.getBoundingClientRect?.()) || { width: 0, height: 0 };
   
   const isHTheme = (theme==='hleft' || theme==='hright');
-  const W = rootRect.width || window.innerWidth;
-  const H = rootRect.height || window.innerHeight;
+  let W = rootRect.width || window.innerWidth;
+  let H = rootRect.height || window.innerHeight;
+  
+  // For horizontal theme in expanded state, calculate expected size
+  if (isHTheme && expanded) {
+      const N = items.length;
+      const itemWidth = 56; const gap = 8; const pad = 16;
+      const totalW = (N>0)? (N*itemWidth + Math.max(0, N-1)*gap + pad) : pad;
+      const bgPadH = 8;
+      const margin = 24;
+      const vMargin = 16;
+      const expectedW = totalW + 12 + centerSize + bgPadH * 2 + margin * 2;
+      const expectedH = Math.max(Math.round(centerSize) + 24, 60) + vMargin * 2;
+      // Use expected size if current size is too small
+      if (W < expectedW - 10) W = expectedW;
+      if (H < expectedH - 10) H = expectedH;
+  }
   
   if (W < 40 || H < 40) { try { setTimeout(placeItems, 50); } catch (e) {} return; }
   
@@ -161,11 +176,25 @@ function placeItems() {
   if (isH) {
     const itemWidth = 56; const gap = 8; const pad = 16; const totalW = (N>0)? (N*itemWidth + Math.max(0, N-1)*gap + pad) : pad;
     const dir = (theme==='hleft') ? -1 : 1;
-    const btnTopFixed = 12;
-    // ... calculate center pos
-    const centerBaseX = (theme==='hleft') ? (W - 18 - Math.round(centerSize)) : 18; 
-    const centerX = centerBaseX + 5;
-    const centerTop = btnTopFixed;
+    
+    let centerX, centerTop, centerY;
+    
+    if (!expanded) {
+        // Collapsed state: center the button in the small window
+        centerX = Math.floor((W - centerSize) / 2);
+        centerTop = Math.floor((H - centerSize) / 2);
+        centerY = centerTop + Math.round(centerSize / 2);
+    } else {
+        // Expanded state: position button at edge for horizontal expansion
+        // Use smaller vertical margin for horizontal theme
+        const vMargin = 16;
+        const margin = 24;
+        const btnTopFixed = vMargin + 12;
+        const centerBaseX = (theme==='hleft') ? (W - margin - 18 - Math.round(centerSize)) : (margin + 18); 
+        centerX = centerBaseX + 5;
+        centerTop = btnTopFixed;
+        centerY = btnTopFixed + Math.round(centerSize/2);
+    }
     
     // Explicitly set center button pos for H layout
     if (center) {
@@ -174,8 +203,6 @@ function placeItems() {
         center.style.top = centerTop + 'px';
         center.style.zIndex = '100'; // Higher z-index
     }
-
-    const centerY = btnTopFixed + Math.round(centerSize/2);
     const trayHeight = Math.max(Math.round(centerSize) + 8, 48);
     const bgHeight = Math.max(Math.round(centerSize) + 18, 56);
     // Align tray and background to the center of the button (centerY) instead of window center (cy)
@@ -184,20 +211,20 @@ function placeItems() {
     
     let bgLeft, bgWidth, trayLeft;
     const bgPadH = 8;
-    bgWidth = centerSize + 24 + totalW + bgPadH * 2;
+    bgWidth = totalW + 12 + centerSize + bgPadH * 2;
     
     if (dir < 0) { // hleft (tray to left of center)
        // Center is at centerX. Tray ends at centerX - 12
        trayLeft = centerX - 12 - totalW;
-       bgLeft = trayLeft - bgPadH - 12;
+       bgLeft = trayLeft - bgPadH;
        hTray.style.justifyContent = 'flex-end';
-       hTray.style.paddingRight = '8px'; // Add padding near button
+       hTray.style.paddingRight = '8px';
        hTray.style.paddingLeft = '0px';
     } else { // hright
        trayLeft = centerX + centerSize + 12;
-       bgLeft = centerX - 12 - bgPadH - 12; 
+       bgLeft = trayLeft - bgPadH;
        hTray.style.justifyContent = 'flex-start';
-       hTray.style.paddingLeft = '8px'; // Add padding near button
+       hTray.style.paddingLeft = '8px';
        hTray.style.paddingRight = '0px';
     }
     
@@ -232,11 +259,11 @@ function placeItems() {
       div.innerHTML = `${useIcon}<div class="label">${labelText}</div>`;
       div.addEventListener('click', async () => {
         if (!expanded) return;
-        const isApp = String(it.actionType||'')==='app';
         try {
-          // Fixed: closeApplicationsWindow is removed, performAction toggles launcher
           await window.compassAPI.pluginCall('screen-compass', 'performAction', [it]);
         } catch (e) {}
+        setExpanded(false);
+        try { window.compassAPI.pluginCall('screen-compass', 'closeMenu', []); } catch(e){}
       });
       hTray.appendChild(div);
     }
@@ -251,12 +278,11 @@ function placeItems() {
       div.addEventListener('mouseleave', () => { activeIndex = -1; updateWedgesOpacity(); });
       div.addEventListener('click', async () => {
         if (!expanded) return;
-        const isApp = String(it.actionType||'')==='app';
         try {
-          // Fixed: closeApplicationsWindow is removed, performAction toggles launcher
           await window.compassAPI.pluginCall('screen-compass', 'performAction', [it]);
         } catch (e) {}
-        try { setExpanded(false); } catch (e) {}
+        setExpanded(false);
+        try { window.compassAPI.pluginCall('screen-compass', 'closeMenu', []); } catch(e){}
       });
       ring.appendChild(div);
     }
@@ -275,32 +301,32 @@ function placeItems() {
      
      // Full width includes center button + spacing + tray
      // spacing is 12px between center and tray (or tray end)
-     const bgWidth = centerSize + 24 + totalW + bgPadH * 2;
+     const bgWidth = totalW + 12 + centerSize + bgPadH * 2;
      
-     reqW = bgWidth + margin*2; // No min width constraint, fit content
-     reqH = Math.max(Math.round(centerSize)+18, 56) + margin*3;
+     reqW = bgWidth + margin*2;
+     // Height: just enough for button with small padding
+     const vMargin = 16;
+     reqH = Math.max(Math.round(centerSize) + 24, 60) + vMargin * 2;
      
      // ANCHOR CALCULATION
      // We need to tell main process where the "center" of the drag button is, relative to our window.
-     // margin is 16.
-     // centerTop = 12. centerY = 12 + centerSize/2.
      
      if (theme === 'hleft') {
          // Menu expands to LEFT. Button is on RIGHT.
          // Layout: [Items] [Gap] [Button]
          // From placeItems logic:
-         // centerX = reqW - 18 - centerSize + 5 = reqW - 13 - centerSize
+         // centerX = reqW - margin - 18 - centerSize + 5 = reqW - margin - 13 - centerSize
          // Button Center X = centerX + centerSize/2
-         offX = Math.floor(reqW - 13 - centerSize/2);
+         offX = Math.floor(reqW - margin - 13 - centerSize/2);
      } else {
          // Menu expands to RIGHT. Button is on LEFT.
          // From placeItems logic:
-         // centerX = 18 + 5 = 23
-         // Button Center X = 23 + centerSize/2
-         offX = Math.floor(23 + centerSize/2);
+         // centerX = margin + 18 + 5 = margin + 23
+         // Button Center X = centerX + centerSize/2
+         offX = Math.floor(margin + 23 + centerSize/2);
      }
      
-     offY = Math.floor(12 + centerSize/2);
+     offY = Math.floor(vMargin + 12 + centerSize/2);
      
   } else {
      // Radial
@@ -366,11 +392,26 @@ let toplayerDragActive = false;
 function cleanupDragListeners() {
     window.removeEventListener('mousemove', onCenterMouseMove);
     window.removeEventListener('mouseup', onCenterMouseUp);
-    document.removeEventListener('mouseleave', onCenterMouseUp);
+    document.removeEventListener('mouseleave', onCenterMouseLeave);
     isWinDragging = false;
     toplayerDragActive = false;
     winInitialPos = null;
+    winStartScreenX = 0;
+    winStartScreenY = 0;
 }
+
+// Subscribe to drag cancel event
+try {
+    window.compassAPI?.subscribe?.('widget.drag.cancel');
+} catch (e) {}
+
+// Listen for drag cancelled event from main process
+window.compassAPI?.onEvent?.((name, payload) => {
+    if (name === 'widget.drag.cancel') {
+        console.log('[ScreenCompass Frontend] Drag cancelled, cleaning up');
+        cleanupDragListeners();
+    }
+});
 
 center.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return; // Only left click
@@ -382,20 +423,20 @@ center.addEventListener('mousedown', (e) => {
     toplayerDragActive = false;
     winStartScreenX = e.screenX;
     winStartScreenY = e.screenY;
-    winInitialPos = null;
     
-    // Use window to capture events even when mouse leaves the element
-    window.addEventListener('mousemove', onCenterMouseMove);
-    window.addEventListener('mouseup', onCenterMouseUp);
-    document.addEventListener('mouseleave', onCenterMouseUp);
-    
+    // Get initial position synchronously from cached state
+    // The backend should have cached the position from last drag
     (async () => {
         try {
             const res = await window.compassAPI.pluginCall('screen-compass', 'getDragWinPos');
             if (res && res.result) winInitialPos = res.result;
-            else winInitialPos = null;
-        } catch (e) { winInitialPos = null; }
+        } catch (e) {}
     })();
+    
+    // Use window to capture events even when mouse leaves the element
+    window.addEventListener('mousemove', onCenterMouseMove);
+    window.addEventListener('mouseup', onCenterMouseUp);
+    document.addEventListener('mouseleave', onCenterMouseLeave);
 });
 
 function onCenterMouseMove(e) {
@@ -410,35 +451,51 @@ function onCenterMouseMove(e) {
     if (!isWinDragging && (Math.abs(dx) > WIN_DRAG_THRESHOLD || Math.abs(dy) > WIN_DRAG_THRESHOLD)) {
         isWinDragging = true;
         // Collapse if expanded when drag starts
+        // Only update frontend state, don't call closeMenu to avoid window resize during drag
         if (expanded) {
             setExpanded(false);
-            try { window.compassAPI.pluginCall('screen-compass', 'closeMenu', []); } catch(e){}
         }
         
         // Notify toplayer to set fullscreen shape (enables mouse events outside widget)
-        (async () => {
-            try {
-                await window.compassAPI.pluginCall('screen-compass', 'handleDrag', []);
-                toplayerDragActive = true;
-            } catch(err) {
-                console.warn('[ScreenCompass] handleDrag failed:', err);
-            }
-        })();
+        // Fire and forget - don't wait for response
+        window.compassAPI.pluginCall('screen-compass', 'handleDrag', []).then(() => {
+            toplayerDragActive = true;
+        }).catch(err => {
+            console.warn('[ScreenCompass] handleDrag failed:', err);
+        });
     }
     
-    // We handle the movement ourselves
-    if (isWinDragging && winInitialPos) {
-        const newX = winInitialPos.x + dx;
-        const newY = winInitialPos.y + dy;
-        try { window.compassAPI.pluginCall('screen-compass', 'moveDragWin', [newX, newY]); } catch(e){}
+    // We handle the movement ourselves - use last known position if initial not set yet
+    if (isWinDragging) {
+        // If we don't have initial pos yet, use 0,0 as fallback (will be corrected once we get it)
+        const baseX = winInitialPos ? winInitialPos.x : 0;
+        const baseY = winInitialPos ? winInitialPos.y : 0;
+        const newX = baseX + dx;
+        const newY = baseY + dy;
+        // Fire and forget for better responsiveness
+        window.compassAPI.pluginCall('screen-compass', 'moveDragWin', [newX, newY]).catch(() => {});
     }
+}
+
+// Handle mouseleave - only end drag if not currently dragging
+function onCenterMouseLeave(e) {
+    // If we are dragging, don't end the drag - the user is moving fast
+    // The drag will end when mouseup occurs
+    if (isWinDragging) {
+        return;
+    }
+    
+    // Clean up listeners for non-drag state
+    window.removeEventListener('mousemove', onCenterMouseMove);
+    window.removeEventListener('mouseup', onCenterMouseUp);
+    document.removeEventListener('mouseleave', onCenterMouseLeave);
 }
 
 function onCenterMouseUp(e) {
     // Always remove listeners first
     window.removeEventListener('mousemove', onCenterMouseMove);
     window.removeEventListener('mouseup', onCenterMouseUp);
-    document.removeEventListener('mouseleave', onCenterMouseUp);
+    document.removeEventListener('mouseleave', onCenterMouseLeave);
     
     if (!isWinDragging) {
         // Treat as click
@@ -455,11 +512,7 @@ function onCenterMouseUp(e) {
         const dy = e.screenY - winStartScreenY;
         const finalX = winInitialPos ? winInitialPos.x + dx : undefined;
         const finalY = winInitialPos ? winInitialPos.y + dy : undefined;
-        (async () => {
-            try { 
-                await window.compassAPI.pluginCall('screen-compass', 'endDragFromFrontend', [finalX, finalY]); 
-            } catch(e) {}
-        })();
+        window.compassAPI.pluginCall('screen-compass', 'endDragFromFrontend', [finalX, finalY]).catch(() => {});
     }
     
     // Reset all state
@@ -502,12 +555,20 @@ root.addEventListener('pointermove', (e) => {
     const dx = Math.abs(e.clientX - startX);
     const dy = Math.abs(e.clientY - startY);
     if (dx > 5 || dy > 5) {
-        showDragHint();
-        isDragging = false; // Show once per drag attempt
+        isDragging = false;
     }
 });
 
-root.addEventListener('pointerup', () => { isDragging = false; });
+root.addEventListener('pointerup', (e) => { 
+    if (isDragging && expanded) {
+        // Click on non-interactive area - close menu
+        if (!e.target.closest('.item') && !e.target.closest('.center-btn') && !e.target.closest('.sectors')) {
+            setExpanded(false);
+            try { window.compassAPI.pluginCall('screen-compass', 'closeMenu', []); } catch(e){}
+        }
+    }
+    isDragging = false; 
+});
 root.addEventListener('pointercancel', () => { isDragging = false; });
 
 let inactivityTimer = null;

@@ -281,8 +281,8 @@ async function performAction(item) {
     if (!item) return;
     try {
         await window.compassAPI.pluginCall('screen-compass', 'performAction', [item]);
-        // Auto close after action
         setExpanded(false);
+        try { window.compassAPI.pluginCall('screen-compass', 'closeMenu', []); } catch(e){}
     } catch(e) { console.error(e); }
 }
 
@@ -331,11 +331,26 @@ let toplayerDragActive = false;
 function cleanupDragListeners() {
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
-    document.removeEventListener('mouseleave', onMouseUp);
+    document.removeEventListener('mouseleave', onMouseLeave);
     isDragging = false;
     toplayerDragActive = false;
     initialWinPos = null;
+    startScreenX = 0;
+    startScreenY = 0;
 }
+
+// Subscribe to drag cancel event
+try {
+    window.compassAPI?.subscribe?.('widget.drag.cancel');
+} catch (e) {}
+
+// Listen for drag cancelled event from main process
+window.compassAPI?.onEvent?.((name, payload) => {
+    if (name === 'widget.drag.cancel') {
+        console.log('[ScreenCompass Surface] Drag cancelled, cleaning up');
+        cleanupDragListeners();
+    }
+});
 
 // Toggle Menu: The core function
 async function setExpanded(expanded) {
@@ -348,9 +363,6 @@ async function setExpanded(expanded) {
     
     // 2. Notify Backend to Resize Widget
     try {
-        // We pass the expanded state. Backend calculates size.
-        // Or we pass the desired size?
-        // Let's pass the state.
         await window.compassAPI.pluginCall('screen-compass', 'setMenuState', [isExpanded]);
         
         // 3. After resize (async), we might need to re-place items if size changed significantly
@@ -362,10 +374,8 @@ async function setExpanded(expanded) {
 }
 
 // Drag Logic on Center Button - frontend controls everything, toplayer just manages shape
-center.addEventListener('mousedown', async (e) => {
+center.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
-    // If expanded, clicking center usually means close.
-    // If collapsed, it could be click (open) or drag.
     
     // Clean up any previous drag state first
     cleanupDragListeners();
@@ -375,16 +385,18 @@ center.addEventListener('mousedown', async (e) => {
     startScreenX = e.screenX;
     startScreenY = e.screenY;
     
-    try {
-        const res = await window.compassAPI.pluginCall('screen-compass', 'getDragWinPos');
-        if (res && res.result) initialWinPos = res.result;
-        else initialWinPos = null;
-    } catch (e) { initialWinPos = null; }
+    // Get initial position asynchronously
+    (async () => {
+        try {
+            const res = await window.compassAPI.pluginCall('screen-compass', 'getDragWinPos');
+            if (res && res.result) initialWinPos = res.result;
+        } catch (e) {}
+    })();
 
     // Use window to capture events even when mouse leaves the element
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
-    document.addEventListener('mouseleave', onMouseUp);
+    document.addEventListener('mouseleave', onMouseLeave);
 });
 
 function onMouseMove(e) {
@@ -398,33 +410,52 @@ function onMouseMove(e) {
     
     if (!isDragging && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
         isDragging = true;
-        // If dragging started, ensure we are collapsed?
-        if (isExpanded) setExpanded(false);
+        // Collapse if expanded when drag starts
+        // Only update frontend state, don't call setExpanded to avoid window resize during drag
+        if (isExpanded) {
+            isExpanded = false;
+            updateCenterIcon();
+            updateVisibility();
+        }
         
-        // Notify toplayer to set fullscreen shape (enables mouse events outside widget)
-        (async () => {
-            try {
-                await window.compassAPI.pluginCall('screen-compass', 'handleDrag', []);
-                toplayerDragActive = true;
-            } catch(err) {
-                console.warn('[ScreenCompass Surface] handleDrag failed:', err);
-            }
-        })();
+        // Notify toplayer to set fullscreen shape - fire and forget
+        window.compassAPI.pluginCall('screen-compass', 'handleDrag', []).then(() => {
+            toplayerDragActive = true;
+        }).catch(err => {
+            console.warn('[ScreenCompass Surface] handleDrag failed:', err);
+        });
     }
     
-    // We handle the movement ourselves
-    if (isDragging && initialWinPos) {
-        const newX = initialWinPos.x + dx;
-        const newY = initialWinPos.y + dy;
-        window.compassAPI.pluginCall('screen-compass', 'moveDragWin', [newX, newY]);
+    // We handle the movement ourselves - use last known position if initial not set yet
+    if (isDragging) {
+        const baseX = initialWinPos ? initialWinPos.x : 0;
+        const baseY = initialWinPos ? initialWinPos.y : 0;
+        const newX = baseX + dx;
+        const newY = baseY + dy;
+        // Fire and forget for better responsiveness
+        window.compassAPI.pluginCall('screen-compass', 'moveDragWin', [newX, newY]).catch(() => {});
     }
+}
+
+// Handle mouseleave - only end drag if not currently dragging
+function onMouseLeave(e) {
+    // If we are dragging, don't end the drag - the user is moving fast
+    // The drag will end when mouseup occurs
+    if (isDragging) {
+        return;
+    }
+    
+    // Clean up listeners for non-drag state
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+    document.removeEventListener('mouseleave', onMouseLeave);
 }
 
 function onMouseUp(e) {
     // Always remove listeners first
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
-    document.removeEventListener('mouseleave', onMouseUp);
+    document.removeEventListener('mouseleave', onMouseLeave);
     
     if (!isDragging) {
         // Clicked!
@@ -435,11 +466,7 @@ function onMouseUp(e) {
         const dy = e.screenY - startScreenY;
         const finalX = initialWinPos ? initialWinPos.x + dx : undefined;
         const finalY = initialWinPos ? initialWinPos.y + dy : undefined;
-        (async () => {
-            try { 
-                await window.compassAPI.pluginCall('screen-compass', 'endDragFromFrontend', [finalX, finalY]); 
-            } catch(e) {}
-        })();
+        window.compassAPI.pluginCall('screen-compass', 'endDragFromFrontend', [finalX, finalY]).catch(() => {});
     }
     
     // Reset all state
