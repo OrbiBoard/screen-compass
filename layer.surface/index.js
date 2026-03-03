@@ -373,6 +373,16 @@ async function setExpanded(expanded) {
     } catch(e) { console.error(e); }
 }
 
+// Collapse for drag - only hide UI elements, don't re-render or resize
+function collapseForDrag() {
+    if (!isExpanded) return;
+    isExpanded = false;
+    
+    // Hide all expanded elements without re-rendering
+    updateVisibility();
+    updateCenterIcon();
+}
+
 // Drag Logic on Center Button - frontend controls everything, toplayer just manages shape
 center.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
@@ -411,11 +421,9 @@ function onMouseMove(e) {
     if (!isDragging && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
         isDragging = true;
         // Collapse if expanded when drag starts
-        // Only update frontend state, don't call setExpanded to avoid window resize during drag
+        // Use collapseForDrag to hide UI without re-rendering or resizing
         if (isExpanded) {
-            isExpanded = false;
-            updateCenterIcon();
-            updateVisibility();
+            collapseForDrag();
         }
         
         // Notify toplayer to set fullscreen shape - fire and forget

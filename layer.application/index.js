@@ -380,6 +380,22 @@ setExpanded = (on) => {
   if (expanded) resetInactivityTimer();
 };
 
+// Collapse for drag - only hide UI elements, don't re-render
+function collapseForDrag() {
+  if (!expanded) return;
+  expanded = false;
+  
+  // Hide all expanded elements without re-rendering
+  __fadeOutAll();
+  
+  // Hide ring items
+  const nodes = Array.from(ring.children);
+  nodes.forEach(n => { n.classList.add('hidden'); });
+  
+  // Update center icon
+  updateCenterIcon();
+}
+
 // Handle center button drag - frontend controls everything, toplayer just manages shape
 let isWinDragging = false;
 let winStartScreenX = 0;
@@ -387,6 +403,7 @@ let winStartScreenY = 0;
 let winInitialPos = null;
 const WIN_DRAG_THRESHOLD = 5;
 let toplayerDragActive = false;
+let wasHThemeExpanded = false; // Track if horizontal theme was expanded before drag
 
 // Cleanup function to ensure all listeners are removed
 function cleanupDragListeners() {
@@ -396,6 +413,7 @@ function cleanupDragListeners() {
     isWinDragging = false;
     toplayerDragActive = false;
     winInitialPos = null;
+    wasHThemeExpanded = false;
     winStartScreenX = 0;
     winStartScreenY = 0;
 }
@@ -450,10 +468,19 @@ function onCenterMouseMove(e) {
     
     if (!isWinDragging && (Math.abs(dx) > WIN_DRAG_THRESHOLD || Math.abs(dy) > WIN_DRAG_THRESHOLD)) {
         isWinDragging = true;
-        // Collapse if expanded when drag starts
-        // Only update frontend state, don't call closeMenu to avoid window resize during drag
+        
+        const isH = (theme === 'hleft' || theme === 'hright');
+        
         if (expanded) {
-            setExpanded(false);
+            if (isH) {
+                // Horizontal theme: only hide UI, keep state for restore after drag
+                wasHThemeExpanded = true;
+                collapseForDrag();
+            } else {
+                // Circle/Sector theme: fully collapse
+                // setExpanded(false);
+                collapseForDrag();
+            }
         }
         
         // Notify toplayer to set fullscreen shape (enables mouse events outside widget)
@@ -513,12 +540,19 @@ function onCenterMouseUp(e) {
         const finalX = winInitialPos ? winInitialPos.x + dx : undefined;
         const finalY = winInitialPos ? winInitialPos.y + dy : undefined;
         window.compassAPI.pluginCall('screen-compass', 'endDragFromFrontend', [finalX, finalY]).catch(() => {});
+        
+        // For horizontal theme: restore expanded state after drag
+        // if (wasHThemeExpanded) {
+            setExpanded(true);
+            try { window.compassAPI.pluginCall('screen-compass', 'openMenu', []); } catch(e){}
+        // }
     }
     
     // Reset all state
     isWinDragging = false;
     toplayerDragActive = false;
     winInitialPos = null;
+    wasHThemeExpanded = false;
     winStartScreenX = 0;
     winStartScreenY = 0;
 }
