@@ -290,15 +290,18 @@ const functions = {
   },
 
   // Called by renderer via IPC
-  handleDrag: async () => {
+  handleDrag: async (options) => {
     try {
         // Store start pos
         const res = await pluginApi.call(SERVICE_ID, 'getWidget', [state.widgetId]);
         if (res && res.result && res.result.bounds) {
             state.dragStartPos = { x: res.result.bounds.x, y: res.result.bounds.y };
         }
-        // Start Drag - this sets fullscreen shape
-        await pluginApi.call(SERVICE_ID, 'startDrag', [state.widgetId]);
+        // Start Drag - pass isTouch to determine drag mode
+        await pluginApi.call(SERVICE_ID, 'startDrag', [{ 
+            id: state.widgetId,
+            isTouch: options?.isTouch || false
+        }]);
         // Show overlay
         pluginApi.call(SERVICE_ID, 'showOverlay', ['点击空白区域取消拖动']);
     } catch (e) { console.error(e); }
@@ -405,7 +408,6 @@ const functions = {
   },
 
   performAction: async (button) => {
-    // ... (Same as before)
     try {
       const b = (button && button.result) ? button.result : button;
       if (!b || typeof b !== 'object') return false;
@@ -414,7 +416,13 @@ const functions = {
       if (type === 'app') {
         try { 
           const wb = { x: state.lastWidgetPos.x, y: state.lastWidgetPos.y, width: state.dragWinSize, height: state.dragWinSize };
-          await pluginApi.call('app-launcher', 'toggleMenu', [{ type: 'compass', bounds: wb }]);
+          // Use main program's launcher API
+          if (pluginApi.launcher && pluginApi.launcher.toggle) {
+            pluginApi.launcher.toggle({ type: 'compass', bounds: wb });
+          } else {
+            // Fallback: open applications window directly
+            await functions.openApplicationsWindow();
+          }
           return true; 
         } catch (e) { return { ok: false, error: e?.message || String(e) }; }
       }

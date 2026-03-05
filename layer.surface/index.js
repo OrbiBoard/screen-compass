@@ -322,21 +322,24 @@ function updateWindowShape() {
 
 // --- Drag & Toggle Logic ---
 
-let startScreenX = 0, startScreenY = 0;
+let startClientX = 0, startClientY = 0;
 let initialWinPos = null;
 const DRAG_THRESHOLD = 5;
 let toplayerDragActive = false;
 
 // Cleanup function to ensure all listeners are removed
 function cleanupDragListeners() {
-    window.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('mouseup', onMouseUp);
+    window.removeEventListener('mousemove', onPointerMove);
+    window.removeEventListener('mouseup', onPointerUp);
     document.removeEventListener('mouseleave', onMouseLeave);
+    window.removeEventListener('touchmove', onPointerMove);
+    window.removeEventListener('touchend', onPointerUp);
+    window.removeEventListener('touchcancel', onPointerUp);
     isDragging = false;
     toplayerDragActive = false;
     initialWinPos = null;
-    startScreenX = 0;
-    startScreenY = 0;
+    startClientX = 0;
+    startClientY = 0;
 }
 
 // Subscribe to drag cancel event
@@ -384,16 +387,22 @@ function collapseForDrag() {
 }
 
 // Drag Logic on Center Button - frontend controls everything, toplayer just manages shape
-center.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return;
-    
+function startDrag(e) {
     // Clean up any previous drag state first
     cleanupDragListeners();
     
     isDragging = false;
     toplayerDragActive = false;
-    startScreenX = e.screenX;
-    startScreenY = e.screenY;
+    
+    // Get client coordinates from either mouse or touch event
+    if (e.type === 'touchstart') {
+        const touch = e.touches[0];
+        startClientX = touch.clientX;
+        startClientY = touch.clientY;
+    } else {
+        startClientX = e.clientX;
+        startClientY = e.clientY;
+    }
     
     // Get initial position asynchronously
     (async () => {
@@ -403,20 +412,41 @@ center.addEventListener('mousedown', (e) => {
         } catch (e) {}
     })();
 
-    // Use window to capture events even when mouse leaves the element
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    // Use window to capture events even when pointer leaves the element
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('mouseup', onPointerUp);
     document.addEventListener('mouseleave', onMouseLeave);
-});
+    
+    // Add touch event listeners
+    window.addEventListener('touchmove', onPointerMove, { passive: false });
+    window.addEventListener('touchend', onPointerUp);
+    window.addEventListener('touchcancel', onPointerUp);
+}
 
-function onMouseMove(e) {
+function onPointerMove(e) {
+    // Prevent default for touch events to avoid scrolling
+    if (e.type === 'touchmove') {
+        e.preventDefault();
+    }
+    
     // Safety check: if we're not dragging, ignore
-    if (!isDragging && startScreenX === 0 && startScreenY === 0) {
+    if (!isDragging && startClientX === 0 && startClientY === 0) {
         return;
     }
     
-    const dx = e.screenX - startScreenX;
-    const dy = e.screenY - startScreenY;
+    // Get client coordinates from either mouse or touch event
+    let clientX, clientY;
+    if (e.type === 'touchmove') {
+        const touch = e.touches[0];
+        clientX = touch.clientX;
+        clientY = touch.clientY;
+    } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+    }
+    
+    const dx = clientX - startClientX;
+    const dy = clientY - startClientY;
     
     if (!isDragging && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
         isDragging = true;
@@ -454,24 +484,35 @@ function onMouseLeave(e) {
     }
     
     // Clean up listeners for non-drag state
-    window.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('mouseup', onMouseUp);
-    document.removeEventListener('mouseleave', onMouseLeave);
+    cleanupDragListeners();
 }
 
-function onMouseUp(e) {
+function onPointerUp(e) {
     // Always remove listeners first
-    window.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('mouseup', onMouseUp);
-    document.removeEventListener('mouseleave', onMouseLeave);
+    cleanupDragListeners();
     
     if (!isDragging) {
         // Clicked!
         setExpanded(!isExpanded);
     } else if (toplayerDragActive) {
-        // Notify toplayer to end drag and restore shape
-        const dx = e.screenX - startScreenX;
-        const dy = e.screenY - startScreenY;
+        // Get client coordinates from either mouse or touch event
+        let clientX, clientY;
+        if (e.type === 'touchend' || e.type === 'touchcancel') {
+            // For touch events, use the changedTouches to get final position
+            if (e.changedTouches && e.changedTouches[0]) {
+                clientX = e.changedTouches[0].clientX;
+                clientY = e.changedTouches[0].clientY;
+            } else {
+                clientX = startClientX;
+                clientY = startClientY;
+            }
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+        
+        const dx = clientX - startClientX;
+        const dy = clientY - startClientY;
         const finalX = initialWinPos ? initialWinPos.x + dx : undefined;
         const finalY = initialWinPos ? initialWinPos.y + dy : undefined;
         window.compassAPI.pluginCall('screen-compass', 'endDragFromFrontend', [finalX, finalY]).catch(() => {});
@@ -481,9 +522,13 @@ function onMouseUp(e) {
     isDragging = false;
     toplayerDragActive = false;
     initialWinPos = null;
-    startScreenX = 0;
-    startScreenY = 0;
+    startClientX = 0;
+    startClientY = 0;
 }
+
+// Add event listeners for both mouse and touch
+center.addEventListener('mousedown', startDrag);
+center.addEventListener('touchstart', startDrag, { passive: false });
 
 // Drag Hint Logic
 let hintTimer = null;

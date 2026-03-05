@@ -396,26 +396,26 @@ function collapseForDrag() {
   updateCenterIcon();
 }
 
-// Handle center button drag - frontend controls everything, toplayer just manages shape
+// Handle center button drag - toplayer handles the actual drag, we just notify it
 let isWinDragging = false;
-let winStartScreenX = 0;
-let winStartScreenY = 0;
-let winInitialPos = null;
-const WIN_DRAG_THRESHOLD = 5;
 let toplayerDragActive = false;
-let wasHThemeExpanded = false; // Track if horizontal theme was expanded before drag
+let wasHThemeExpanded = false;
+let touchStartClientX = 0;
+let touchStartClientY = 0;
+const WIN_DRAG_THRESHOLD = 5;
 
-// Cleanup function to ensure all listeners are removed
+// Cleanup function
 function cleanupDragListeners() {
-    window.removeEventListener('mousemove', onCenterMouseMove);
-    window.removeEventListener('mouseup', onCenterMouseUp);
-    document.removeEventListener('mouseleave', onCenterMouseLeave);
+    window.removeEventListener('mousemove', onPointerMove);
+    window.removeEventListener('mouseup', onPointerUp);
+    window.removeEventListener('touchmove', onPointerMove);
+    window.removeEventListener('touchend', onPointerUp);
+    window.removeEventListener('touchcancel', onPointerUp);
     isWinDragging = false;
     toplayerDragActive = false;
-    winInitialPos = null;
     wasHThemeExpanded = false;
-    winStartScreenX = 0;
-    winStartScreenY = 0;
+    touchStartClientX = 0;
+    touchStartClientY = 0;
 }
 
 // Subscribe to drag cancel event
@@ -431,40 +431,57 @@ window.compassAPI?.onEvent?.((name, payload) => {
     }
 });
 
-center.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return; // Only left click
-    
-    // Clean up any previous drag state first
+// Unified drag start function for both mouse and touch
+function startDrag(e) {
     cleanupDragListeners();
     
     isWinDragging = false;
     toplayerDragActive = false;
-    winStartScreenX = e.screenX;
-    winStartScreenY = e.screenY;
     
-    // Get initial position synchronously from cached state
-    // The backend should have cached the position from last drag
-    (async () => {
-        try {
-            const res = await window.compassAPI.pluginCall('screen-compass', 'getDragWinPos');
-            if (res && res.result) winInitialPos = res.result;
-        } catch (e) {}
-    })();
-    
-    // Use window to capture events even when mouse leaves the element
-    window.addEventListener('mousemove', onCenterMouseMove);
-    window.addEventListener('mouseup', onCenterMouseUp);
-    document.addEventListener('mouseleave', onCenterMouseLeave);
-});
-
-function onCenterMouseMove(e) {
-    // Safety check: if we're not dragging, ignore
-    if (!isWinDragging && winStartScreenX === 0 && winStartScreenY === 0) {
-        return;
+    // Get client coordinates from either mouse or touch event
+    if (e.type === 'touchstart') {
+        if (e.touches.length > 0) {
+            touchStartClientX = e.touches[0].clientX;
+            touchStartClientY = e.touches[0].clientY;
+        }
+    } else {
+        if (e.button !== 0) return; // Only left click for mouse
+        touchStartClientX = e.clientX;
+        touchStartClientY = e.clientY;
     }
     
-    const dx = e.screenX - winStartScreenX;
-    const dy = e.screenY - winStartScreenY;
+    // Add move and up listeners
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('mouseup', onPointerUp);
+    window.addEventListener('touchmove', onPointerMove, { passive: false });
+    window.addEventListener('touchend', onPointerUp);
+    window.addEventListener('touchcancel', onPointerUp);
+}
+
+// Unified pointer move handler
+function onPointerMove(e) {
+    if (e.type === 'touchmove') {
+        e.preventDefault();
+    }
+    
+    // Get client coordinates
+    let clientX, clientY;
+    const isTouch = (e.type === 'touchmove');
+    
+    if (isTouch) {
+        if (e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            return;
+        }
+    } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+    }
+    
+    const dx = clientX - touchStartClientX;
+    const dy = clientY - touchStartClientY;
     
     if (!isWinDragging && (Math.abs(dx) > WIN_DRAG_THRESHOLD || Math.abs(dy) > WIN_DRAG_THRESHOLD)) {
         isWinDragging = true;
@@ -473,89 +490,49 @@ function onCenterMouseMove(e) {
         
         if (expanded) {
             if (isH) {
-                // Horizontal theme: only hide UI, keep state for restore after drag
                 wasHThemeExpanded = true;
                 collapseForDrag();
             } else {
-                // Circle/Sector theme: fully collapse
-                // setExpanded(false);
                 collapseForDrag();
             }
         }
         
-        // Notify toplayer to set fullscreen shape (enables mouse events outside widget)
-        // Fire and forget - don't wait for response
-        window.compassAPI.pluginCall('screen-compass', 'handleDrag', []).then(() => {
+        // Notify toplayer to start drag
+        // Pass isTouch to indicate whether to use click-to-move or continuous drag
+        window.compassAPI.pluginCall('screen-compass', 'handleDrag', [{ isTouch }]).then(() => {
             toplayerDragActive = true;
         }).catch(err => {
             console.warn('[ScreenCompass] handleDrag failed:', err);
         });
     }
-    
-    // We handle the movement ourselves - use last known position if initial not set yet
-    if (isWinDragging) {
-        // If we don't have initial pos yet, use 0,0 as fallback (will be corrected once we get it)
-        const baseX = winInitialPos ? winInitialPos.x : 0;
-        const baseY = winInitialPos ? winInitialPos.y : 0;
-        const newX = baseX + dx;
-        const newY = baseY + dy;
-        // Fire and forget for better responsiveness
-        window.compassAPI.pluginCall('screen-compass', 'moveDragWin', [newX, newY]).catch(() => {});
-    }
 }
 
-// Handle mouseleave - only end drag if not currently dragging
-function onCenterMouseLeave(e) {
-    // If we are dragging, don't end the drag - the user is moving fast
-    // The drag will end when mouseup occurs
-    if (isWinDragging) {
-        return;
-    }
-    
-    // Clean up listeners for non-drag state
-    window.removeEventListener('mousemove', onCenterMouseMove);
-    window.removeEventListener('mouseup', onCenterMouseUp);
-    document.removeEventListener('mouseleave', onCenterMouseLeave);
-}
-
-function onCenterMouseUp(e) {
-    // Always remove listeners first
-    window.removeEventListener('mousemove', onCenterMouseMove);
-    window.removeEventListener('mouseup', onCenterMouseUp);
-    document.removeEventListener('mouseleave', onCenterMouseLeave);
+// Unified pointer up handler
+function onPointerUp(e) {
+    cleanupDragListeners();
     
     if (!isWinDragging) {
         // Treat as click
         if (expanded) {
-             setExpanded(false);
-             try { window.compassAPI.pluginCall('screen-compass', 'closeMenu', []); } catch(e){}
+            setExpanded(false);
+            try { window.compassAPI.pluginCall('screen-compass', 'closeMenu', []); } catch(e){}
         } else {
-             setExpanded(true);
-             try { window.compassAPI.pluginCall('screen-compass', 'openMenu', []); } catch(e){}
-        }
-    } else if (toplayerDragActive) {
-        // Notify toplayer to end drag and restore shape
-        const dx = e.screenX - winStartScreenX;
-        const dy = e.screenY - winStartScreenY;
-        const finalX = winInitialPos ? winInitialPos.x + dx : undefined;
-        const finalY = winInitialPos ? winInitialPos.y + dy : undefined;
-        window.compassAPI.pluginCall('screen-compass', 'endDragFromFrontend', [finalX, finalY]).catch(() => {});
-        
-        // For horizontal theme: restore expanded state after drag
-        // if (wasHThemeExpanded) {
             setExpanded(true);
             try { window.compassAPI.pluginCall('screen-compass', 'openMenu', []); } catch(e){}
-        // }
+        }
+    } else if (toplayerDragActive) {
+        // Notify toplayer to end drag
+        window.compassAPI.pluginCall('screen-compass', 'endDragFromFrontend', []).catch(() => {});
+        
+        // Restore expanded state
+        setExpanded(true);
+        try { window.compassAPI.pluginCall('screen-compass', 'openMenu', []); } catch(e){}
     }
-    
-    // Reset all state
-    isWinDragging = false;
-    toplayerDragActive = false;
-    winInitialPos = null;
-    wasHThemeExpanded = false;
-    winStartScreenX = 0;
-    winStartScreenY = 0;
 }
+
+// Add event listeners for both mouse and touch
+center.addEventListener('mousedown', startDrag);
+center.addEventListener('touchstart', startDrag, { passive: false });
 
 // Drag hint logic
 let hintTimer = null;
