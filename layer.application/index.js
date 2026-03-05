@@ -15,7 +15,6 @@ let sizeCollapsed = 60;
 let sizeExpanded = 240;
 let centerSize = 50;
 let centerIcon = 'ri-compass-3-line';
-let appActive = false;
 
 // Update center button icon
 function updateCenterIcon() {
@@ -252,7 +251,6 @@ function placeItems() {
       const it = items[i];
       const div = document.createElement('div');
       div.className = 'item';
-      if (appActive && String(it.actionType||'')==='app') { try { div.classList.add('active'); } catch (e) {} }
       const labelText = String(it.label || '').trim();
       const icStr = String(it.icon || '');
       const useIcon = icStr.startsWith('ri-') ? `<i class="${icStr}"></i>` : `<img src="${icStr}" style="width:20px;height:20px;object-fit:contain;border-radius:4px;" />`;
@@ -272,7 +270,6 @@ function placeItems() {
     for (let i = 0; i < N; i++) {
       const it = items[i]; const centerR = 25; let x = 0; let y = 0; { const a = (Math.PI * 2) * ((i + 0.5) / Math.max(N, 1)); const ro2 = Math.min(R + 14, Math.min(cx, cy) - 10); const ri2 = Math.max(centerR + 8, Math.round(R * 0.5)); const RB = Math.round((ro2 + ri2) / 2); x = Math.round(cx + RB * Math.cos(a)); y = Math.round(cy + RB * Math.sin(a)); }
       const div = document.createElement('div'); div.className = 'item'; div.style.position = 'absolute'; const halfW = (theme === 'classic') ? 28 : 22; const halfH = 29; x = Math.max(halfW, Math.min(W - halfW, x)); y = Math.max(halfH+1, Math.min(H - (halfH+1), y)); div.style.left = (x - halfW) + 'px'; div.style.top = (y - halfH) + 'px'; div.title = it.label || ''; const labelText = String(it.label || '').trim(); const icStr = String(it.icon || ''); const useIcon = icStr.startsWith('ri-') ? `<i class="${icStr}"></i>` : `<img src="${icStr}" style="width:20px;height:20px;object-fit:contain;border-radius:4px;" />`; if (theme === 'classic') { div.innerHTML = `<div class="dot">${useIcon}<div class="label">${labelText}</div></div>`; } else { div.innerHTML = `${useIcon}<div class="label">${labelText}</div>`; }
-      if (appActive && String(it.actionType||'')==='app') { try { div.classList.add('active'); } catch (e) {} }
       const updateWedgesOpacity = () => { try { const wedges = sectors.querySelectorAll('.wedge'); wedges.forEach((w)=>{ const idx = Number(w.dataset.index||-1); w.style.opacity = (expanded && idx===activeIndex) ? '1' : '0'; }); } catch (e) {} };
       div.addEventListener('mouseenter', () => { activeIndex = i; updateWedgesOpacity(); });
       div.addEventListener('mouseleave', () => { activeIndex = -1; updateWedgesOpacity(); });
@@ -605,7 +602,7 @@ try {
           await window.compassAPI.pluginCall('screen-compass', 'resizeDragWin', [sizeCollapsed, sizeCollapsed]);
       }
       } catch (e) {} placeItems(); setExpanded(expanded); updateCenterIcon(); }
-    if (payload.type === 'app.active') { try { appActive = !!payload.active; } catch (e) { appActive = !!payload.active; } try { placeItems(); } catch (e) {} }
+    
     if (payload.type === 'menu.toggle') { setExpanded(payload.expanded); updateCenterIcon(); }
   });
 } catch (e) {}

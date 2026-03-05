@@ -568,6 +568,39 @@ const functions = {
     } catch (e) { return false; }
   },
 
+  closeAppMenu: async () => {
+    try {
+      if (appWin && !appWin.isDestroyed()) {
+        appWin.close();
+        appWin = null;
+      }
+      return true;
+    } catch (e) { return false; }
+  },
+
+  openMainSettings: async () => {
+    try {
+      await pluginApi.call('app-launcher', 'openSettings', []);
+      return true;
+    } catch (e) { return false; }
+  },
+
+  configGet: async (scope, key) => {
+    try {
+      // Use store API - store is plugin-scoped, so we just get the key directly
+      const result = await pluginApi.store.get(key);
+      return result;
+    } catch (e) { return null; }
+  },
+
+  configSet: async (scope, key, value) => {
+    try {
+      // Use store API - store is plugin-scoped, so we just set the key directly
+      await pluginApi.store.set(key, value);
+      return true;
+    } catch (e) { return false; }
+  },
+
   listPlugins: () => { 
     try { 
       let pmPath = path.join(app.getAppPath(), 'src', 'main', 'Manager', 'Plugins', 'Main.js');
