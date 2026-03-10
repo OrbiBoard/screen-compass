@@ -538,6 +538,10 @@ const functions = {
         hasShadow: true,
         webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') }
       });
+      
+      // Ensure window stays on top with highest level
+      appWin.setAlwaysOnTop(true, 'screen-saver');
+      appWin.moveTop();
       appWin.loadFile(path.join(__dirname, 'layer.appMenu', 'index.html'));
       try { appWin.on('closed', () => { appWin = null; }); } catch (e) { }
 

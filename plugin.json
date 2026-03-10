@@ -65,6 +65,6 @@
   },
   "dependencies": [
     "ui-lowbar",
-    "service.toplayer"
+    "service-toplayer"
   ]
 }
